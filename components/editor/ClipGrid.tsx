@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Play, Loader2, RefreshCw, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Play, Loader2, RefreshCw, CheckCircle, AlertCircle, Clock, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/Button';
+import { VideoModal } from './VideoModal';
 
 export interface Clip {
   id: string;
@@ -36,6 +37,7 @@ const MOTION_STYLES = [
 export function ClipGrid({ clips, projectId, onGenerateClip, onRetryClip, generatingCount, isGeneratingLocked }: ClipGridProps) {
   const [selectedMotion, setSelectedMotion] = useState('push-in');
   const [selectedResolution, setSelectedResolution] = useState('720p');
+  const [playingClip, setPlayingClip] = useState<Clip | null>(null);
 
   if (clips.length === 0) {
     return (
@@ -100,14 +102,20 @@ export function ClipGrid({ clips, projectId, onGenerateClip, onRetryClip, genera
             onGenerate={() => onGenerateClip(clip.photoId, selectedMotion, selectedResolution)}
             onRetry={() => onRetryClip?.(clip.id)}
             isGeneratingLocked={isGeneratingLocked}
+            onPlay={() => clip.publicUrl && setPlayingClip(clip)}
           />
         ))}
       </div>
+
+      {/* Video player modal */}
+      {playingClip && (
+        <VideoModal clip={playingClip} onClose={() => setPlayingClip(null)} />
+      )}
     </div>
   );
 }
 
-function ClipCard({ clip, onGenerate, onRetry, isGeneratingLocked }: { clip: Clip; onGenerate: () => void; onRetry: () => void; isGeneratingLocked: boolean }) {
+function ClipCard({ clip, onGenerate, onRetry, isGeneratingLocked, onPlay }: { clip: Clip; onGenerate: () => void; onRetry: () => void; isGeneratingLocked: boolean; onPlay: () => void }) {
   return (
     <div className={cn(
       'relative rounded-lg overflow-hidden border',
@@ -154,9 +162,12 @@ function ClipCard({ clip, onGenerate, onRetry, isGeneratingLocked }: { clip: Cli
           </div>
         )}
         {clip.status === 'done' && (
-          <div className="flex items-center gap-1.5 text-emerald-400 text-xs">
-            <CheckCircle className="w-4 h-4" /> Done
-          </div>
+          <button
+            onClick={onPlay}
+            className="flex items-center gap-1.5 text-emerald-400 text-xs hover:text-emerald-300 transition-colors"
+          >
+            <CheckCircle className="w-4 h-4" /> Play
+          </button>
         )}
       </div>
 

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { Upload, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 interface UploadedFile {
@@ -53,7 +54,7 @@ export function PhotoUploader({ projectId, onPhotoUploaded, maxFiles = 50 }: Pho
         headers: { 'Content-Type': uploadedFile.file.type },
       });
 
-      if (!uploadRes.ok) throw new Error('Upload failed');
+      if (!uploadRes.ok) throw new Error('Upload to storage failed');
 
       // 3. Confirm upload with backend
       const confirmRes = await fetch('/api/upload/confirm', {
@@ -68,7 +69,7 @@ export function PhotoUploader({ projectId, onPhotoUploaded, maxFiles = 50 }: Pho
         }),
       });
 
-      if (!confirmRes.ok) throw new Error('Failed to confirm upload');
+      if (!confirmRes.ok) throw new Error('Failed to confirm upload. Please try again.');
       const { photo } = await confirmRes.json();
 
       setFiles(prev =>
@@ -77,8 +78,10 @@ export function PhotoUploader({ projectId, onPhotoUploaded, maxFiles = 50 }: Pho
 
       onPhotoUploaded(photo);
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Upload failed';
+      toast.error(msg);
       setFiles(prev =>
-        prev.map(f => f.id === uploadedFile.id ? { ...f, uploading: false, error: (err as Error).message } : f)
+        prev.map(f => f.id === uploadedFile.id ? { ...f, uploading: false, error: msg } : f)
       );
     }
   }, [projectId, onPhotoUploaded]);

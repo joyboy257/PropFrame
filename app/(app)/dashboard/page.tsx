@@ -3,9 +3,11 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { verifyToken, getUserById } from '@/lib/db/auth';
 import { db } from '@/lib/db';
-import { projects, clips, photos } from '@/lib/db/schema';
-import { eq, desc, sql } from 'drizzle-orm';
+import { projects, clips, photos, creditTransactions, users } from '@/lib/db/schema';
+import { eq, desc, sql, and, gte } from 'drizzle-orm';
 import { Button } from '@/components/ui/Button';
+import { UsageBadge } from '@/components/UsageBadge';
+import { DeleteButton } from '@/components/DeleteButton';
 import { Plus, Film, Clock, ArrowRight } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +32,24 @@ export default async function DashboardPage() {
 
   // Stats
   const totalClips = allProjects.reduce((sum, p) => sum + p.clipCount, 0);
+
+  // Usage this month
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const plan = user.plan ?? 'starter';
+  const PLAN_LIMITS: Record<string, number> = { starter: 20, pro: 100, scale: 500 };
+  const limit = PLAN_LIMITS[plan] ?? 20;
+  const usageResult = await db
+    .select({ total: sql<number>`COALESCE(SUM(ABS(${creditTransactions.amount})), 0)` })
+    .from(creditTransactions)
+    .where(
+      and(
+        eq(creditTransactions.userId, payload.userId),
+        eq(creditTransactions.type, 'clip_generation'),
+        gte(creditTransactions.createdAt, monthStart),
+      )
+    );
+  const usageThisMonth = Number(usageResult[0]?.total ?? 0);
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -63,6 +83,7 @@ export default async function DashboardPage() {
           <div className="text-2xl font-bold text-emerald-400 font-mono">${(user.credits / 100).toFixed(2)}</div>
           <div className="text-sm text-slate-500">Credit Balance</div>
         </div>
+        <UsageBadge used={usageThisMonth} limit={limit} plan={plan} />
       </div>
 
       {/* Project grid */}
@@ -109,7 +130,10 @@ export default async function DashboardPage() {
                       </span>
                     </div>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors shrink-0 mt-1" />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <DeleteButton projectId={project.id} projectName={project.name} />
+                    <ArrowRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors" />
+                  </div>
                 </div>
 
                 {/* Status */}

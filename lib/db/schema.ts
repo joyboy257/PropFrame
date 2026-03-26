@@ -9,6 +9,7 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash'),
   stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
   credits: integer('credits').notNull().default(1000), // 1000 = $10 free
+  plan: varchar('plan', { length: 20 }).notNull().default('starter'), // starter | pro | scale
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
