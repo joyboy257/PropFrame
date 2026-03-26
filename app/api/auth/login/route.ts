@@ -1,0 +1,60 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getUserByEmail, createUser, createSession } from '@/lib/db/auth';
+import { nanoid } from 'nanoid';
+
+export const runtime = 'nodejs';
+
+export async function POST(req: NextRequest) {
+  try {
+    const { email } = await req.json();
+
+    if (!email || typeof email !== 'string') {
+      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    }
+
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Check if user exists
+    let user = await getUserByEmail(normalizedEmail);
+
+    if (!user) {
+      // Create new user with $10 free credits (1000 cents = 1000 credits)
+      user = await createUser(normalizedEmail);
+    }
+
+    // Create session
+    const { token, expiresAt } = await createSession(user.id);
+
+    const response = NextResponse.json({
+      success: true,
+      message: 'Magic link sent',
+      email: normalizedEmail,
+    });
+
+    // Set session cookie
+    response.cookies.set('session_token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      expires: expiresAt,
+      path: '/',
+    });
+
+    // In production, send the magic link via email
+    // For now, return the token directly (dev mode)
+    if (process.env.NODE_ENV !== 'production') {
+      response.cookies.set('dev_token', token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        expires: expiresAt,
+        path: '/',
+      });
+    }
+
+    return response;
+  } catch (error) {
+    console.error('Login error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
+}
