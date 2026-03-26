@@ -1,4 +1,4 @@
-import { Upload, Wand2, Film, Download } from 'lucide-react';
+import { Upload, Wand2, Film, Download, ShieldCheck, Star, Lock, Zap, CreditCard } from 'lucide-react';
 
 const steps = [
   {
@@ -38,6 +38,26 @@ export default function HowItWorks() {
           <p className="text-slate-400 text-lg max-w-xl mx-auto">
             No camera gear. No editing software. No design skills required.
           </p>
+
+          {/* Social Proof Strip */}
+          <div className="flex flex-wrap justify-center items-center gap-6 sm:gap-8 mt-8 pt-8 border-t border-slate-800/50">
+            <div className="flex items-center gap-2 text-slate-400">
+              <CreditCard className="w-4 h-4 text-emerald-400" />
+              <span className="text-sm">No credit card required</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-400">
+              <Zap className="w-4 h-4 text-blue-400" />
+              <span className="text-sm">30-second delivery</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-400">
+              <Lock className="w-4 h-4 text-emerald-400" />
+              <span className="text-sm">Private & secure</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-400">
+              <Star className="w-4 h-4 text-amber-400" />
+              <span className="text-sm">4.9★ on Product Hunt</span>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
