@@ -2,9 +2,9 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { verifyToken, getUserById } from '@/lib/db/auth';
 import { db } from '@/lib/db';
-import { projects, photos, clips } from '@/lib/db/schema';
+import { projects, photos, clips, autoEdits } from '@/lib/db/schema';
 import { eq, desc } from 'drizzle-orm';
-import ProjectEditorClient from './ProjectEditorClient';
+import ProjectEditorClient, { type AutoEdit } from './ProjectEditorClient';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,11 +41,18 @@ export default async function ProjectEditorPage({ params }: { params: { id: stri
     .where(eq(clips.projectId, params.id))
     .orderBy(desc(clips.createdAt));
 
+  const projectAutoEdits = await db
+    .select()
+    .from(autoEdits)
+    .where(eq(autoEdits.projectId, params.id))
+    .orderBy(desc(autoEdits.createdAt));
+
   return (
     <ProjectEditorClient
       project={project}
       photos={projectPhotos}
       clips={projectClips}
+      autoEdits={projectAutoEdits as unknown as AutoEdit[]}
     />
   );
 }

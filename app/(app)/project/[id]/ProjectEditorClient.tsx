@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { PhotoUploader } from '@/components/editor/PhotoUploader';
 import { ClipGrid, type Clip } from '@/components/editor/ClipGrid';
+import { AutoEditTab } from '@/components/editor/AutoEditTab';
 import { Button } from '@/components/ui/Button';
 import { ArrowLeft, Wand2, Sparkles, Film } from 'lucide-react';
 import { toast } from 'sonner';
@@ -26,18 +27,34 @@ interface Project {
   thumbnailUrl?: string | null;
 }
 
+export interface AutoEdit {
+  id: string;
+  projectId: string;
+  clipIds: string[];
+  titleText?: string | null;
+  musicKey?: string | null;
+  status: 'draft' | 'rendering' | 'done' | 'error';
+  publicUrl?: string | null;
+  storageKey?: string | null;
+  cost: number;
+  createdAt: string | Date;
+}
+
 export default function ProjectEditorClient({
   project: initialProject,
   photos: initialPhotos,
   clips: initialClips,
+  autoEdits: initialAutoEdits,
 }: {
   project: Project;
   photos: Photo[];
   clips: Clip[];
+  autoEdits: AutoEdit[];
 }) {
   const [project, setProject] = useState(initialProject);
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [clips, setClips] = useState<Clip[]>(initialClips);
+  const [autoEdits, setAutoEdits] = useState<AutoEdit[]>(initialAutoEdits);
   const [generatingCount, setGeneratingCount] = useState(0);
   const [activeTab, setActiveTab] = useState<'photos' | 'clips' | 'edit'>('photos');
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
@@ -145,6 +162,17 @@ export default function ProjectEditorClient({
     await handleGenerateClip(clip.photoId, clip.motionStyle, clip.resolution);
   }, [clips, handleGenerateClip]);
 
+  const handleAutoEditCreated = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, { credentials: 'include' });
+      if (!res.ok) return;
+      const { autoEdits: updatedAutoEdits } = await res.json();
+      setAutoEdits(updatedAutoEdits);
+    } catch {
+      // silent
+    }
+  }, [project.id]);
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -230,22 +258,12 @@ export default function ProjectEditorClient({
         )}
 
         {activeTab === 'edit' && (
-          <div className="max-w-2xl">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center">
-              <Sparkles className="w-10 h-10 text-slate-700 mx-auto mb-4" />
-              <h2 className="text-lg font-semibold text-slate-300 mb-2">Auto-Edit</h2>
-              <p className="text-sm text-slate-500 mb-6">
-                Generate a polished video from your clips with music, transitions, and titles.
-              </p>
-              {clips.filter(c => c.status === 'done').length === 0 ? (
-                <p className="text-xs text-slate-600">Generate at least one clip first to create an auto-edit.</p>
-              ) : (
-                <Button className="gap-2">
-                  <Sparkles className="w-4 h-4" /> Create Auto-Edit
-                </Button>
-              )}
-            </div>
-          </div>
+          <AutoEditTab
+            projectId={project.id}
+            clips={clips}
+            autoEdits={autoEdits}
+            onAutoEditCreated={handleAutoEditCreated}
+          />
         )}
       </div>
     </div>

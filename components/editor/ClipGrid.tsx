@@ -109,7 +109,10 @@ export function ClipGrid({ clips, projectId, onGenerateClip, onRetryClip, genera
 
       {/* Video player modal */}
       {playingClip && (
-        <VideoModal clip={playingClip} onClose={() => setPlayingClip(null)} />
+        <VideoModal
+          clip={{ ...playingClip, publicUrl: playingClip.publicUrl ?? null }}
+          onClose={() => setPlayingClip(null)}
+        />
       )}
     </div>
   );
