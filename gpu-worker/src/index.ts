@@ -3,7 +3,7 @@ import { db } from './db.js';
 import { clips, photos, projects } from './schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { processClipJob } from './clipProcessor.js';
-import { getR2Object, uploadToR2 } from './r2.js';
+import { getR2Object, uploadToR2, getPhotoUrl } from './r2.js';
 import { logger } from './logger.js';
 
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS ?? '3000', 10);
@@ -53,6 +53,7 @@ async function processOneClip(clip: typeof clips.$inferSelect) {
     }
 
     const photoBuffer = await getR2Object(photo.storageKey);
+    const photoUrl = getPhotoUrl(photo.storageKey);
     log.info(`Downloaded photo (${(photoBuffer.length / 1024).toFixed(1)} KB)`);
 
     // ── 2. Run AI video generation ───────────────────────────────────
@@ -60,6 +61,7 @@ async function processOneClip(clip: typeof clips.$inferSelect) {
       clipId: clip.id,
       photoBuffer,
       photoFilename: photo.filename,
+      photoUrl,
       motionStyle: clip.motionStyle,
       resolution: clip.resolution,
       duration: parseFloat(String(clip.duration)),

@@ -1,145 +1,146 @@
-# Model Research — Free Tier Landscape
+# AI Model Research — Video Generation for PropFrame
 
-> Date: 2026-03-26
-> Status: Active research — revisit quarterly as pricing shifts
-
----
-
-## TL;DR
-
-| Use case | Recommended free tier | Fallback |
-|---|---|---|
-| LLM text generation | Groq Llama 3.3 70B | Cohere Command R+ |
-| Vision / image understanding | Cohere Command R+ Vision | OpenAI GPT-4o (paid) |
-| Video generation | Together.ai ($5 free credit) | Self-host / pay-as-you-go |
-| Image generation | Together.ai FLUX | Replicate (paid) |
-
-**Video generation has no permanent free tier at scale.** Budget for it.
+> Status: Complete. Last updated 2026-03-26.
 
 ---
 
-## Provider Breakdown
+## The Core Question
 
-### Groq — Fastest free tier, text only
+PropFrame needs to turn listing photos into cinematic video clips. Current state: ffmpeg Ken Burns (a mechanical zoom/pan — placeholder). Real question: what replaces it?
 
-**Strengths:** Fastest inference (~280-560 tokens/sec), OpenAI-compatible API, generous rate limits on free tier.
-
-**Free tier limits:**
-- Llama 3.1 8B: 250K TPM, 1K RPM
-- Llama 3.3 70B: 300K TPM, 1K RPM
-- Mistral 8x7B: similar limits
-
-**Limitations:**
-- No vision models
-- No audio/video models
-- Rate limits can be hit hard at production scale
-
-**Use for:** Title text generation, clip naming, auto-edit scripting, any LLM call in the pipeline.
-
-**API shape (OpenAI-compatible):**
-```typescript
-const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-  headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    model: 'llama-3.3-70b-versatile',
-    messages: [{ role: 'user', content: 'Generate a cinematic title for a real estate video...' }],
-  }),
-});
-```
+The use case is narrow: a room photo → realistic, subtle, property-marketing clip. Not a general-purpose movie generator. That narrowness shapes which models matter.
 
 ---
 
-### Cohere — Best free vision, strong text
+## Option A — Commercial APIs
 
-**Strengths:** Best free vision model (`command-r-plus-vision`), large context windows, strong text reasoning.
+Best for: shipping fast, no GPU infrastructure, accepting per-clip costs.
 
-**Free tier:**
-- Command R+: 1M tokens/month free
-- Command R+ Vision: separate quota, check dashboard
+### The Field
 
-**Limitations:**
-- Not OpenAI-compatible — uses Cohere's own SDK
-- Free quotas reset monthly, no rollover
-
-**Use for:**
-- Analyzing listing photos for virtual staging prompts
-- Sky replacement quality checks
-- Describing rooms for auto-edit title generation
-
-**API shape:**
-```typescript
-import { CohereClient } from 'cohere-ai';
-const cohere = new CohereClient({ token: process.env.COHERE_API_KEY });
-const response = await cohere.chat({
-  model: 'command-r-plus-vision',
-  messages: [{ role: 'user', content: 'Describe this room in detail for virtual staging...' }],
-});
-```
-
----
-
-### Together.ai — Most model variety, free credits
-
-**Strengths:** Hosts nearly every open model including FLUX (image gen), video models, Llama, Qwen, DeepSeek.
-
-**Free tier:** $5 credits on signup. No permanent free tier after that.
-
-**Use for:**
-- Video generation (no free option elsewhere)
-- Image generation with FLUX
-- Experimentation with different model families
-
-**Watch out:** $5 goes fast with video. A handful of video generations at 720p will burn through it.
-
----
-
-### GitHub Models — Free, dev/traffic limits
-
-**Strengths:** GPT-4o, o1, Phi-4 all free. Azure-backed reliability.
-
-**Limitations:** Licensed for development and internal use only — not for public-facing production traffic.
-
-**Use for:** Internal tooling, prototyping, testing. Not suitable for the public PropFrame API.
-
----
-
-## PropFrame Integration Plan
-
-### Phase 1 — Immediate (free only)
-- [ ] Groq API for title generation, clip naming, prompt augmentation
-- [ ] Cohere Vision for photo analysis (staging/sky replacement)
-- [ ] Ken Burns via ffmpeg (zero cost, works today)
-
-### Phase 2 — Video generation
-- [ ] Together.ai FLUX for image generation (first $5 credit)
-- [ ] Together.ai video model (separate budget needed)
-- [ ] Alternative: Modal.com GPU worker with self-hosted model
-
-### Phase 3 — Scale
-- [ ] Evaluate Groq production tier vs self-hosted Llama on Modal/GPU cloud
-- [ ] Add Cohere Vision to production stack if free tier insufficient
-
----
-
-## Open Questions
-
-1. **What video model should we target?** RunPod serverless? Replicate? Modal GPU?
-2. **Does Cohere Vision handle architectural/real estate imagery well?** Need a test set.
-3. **Groq rate limits** — at what traffic level do we hit the 1K RPM ceiling?
-4. **Virtual staging quality** — can Cohere Vision + a prompt actually produce usable staging descriptions, or do we need image-to-image generation?
-
----
-
-## Appendix: All Free Tiers Tested
-
-| Provider | Text LLM | Vision | Video | Audio | Free limits |
+| Provider | Free tier | I2V | Max dur | Latency | Notes |
 |---|---|---|---|---|---|
-| Groq | Yes (Llama 3.1/3.3, Mistral) | No | No | No | 250-300K TPM |
-| Cohere | Yes (Command R+) | Yes (Vision) | No | No | 1M tokens/mo |
-| Together.ai | Yes (many) | Yes (FLUX) | Yes (trial credits) | No | $5 signup |
-| GitHub Models | Yes (GPT-4o, Phi-4) | Yes (GPT-4o) | No | No | Dev/internal only |
-| OpenAI | Yes (4o mini) | Yes (4o) | No | Yes | $5 free credit |
-| Lepton AI | Yes (Llama, Qwen) | No | No | No | Generous free tier |
-| Anyscale | Yes (open models) | No | No | No | Free tier available |
-| Perplexity | Yes (Sonar) | No | No | No | API free tier |
-| Groq (Compound) | Yes (with tools) | Partial | No | No | ~450 tps |
+| **OpenAI Sora** | $5 credits | Yes | 20s | 1-3 min | Best quality, most expensive |
+| **RunwayML** | 125 credits | Yes | 10s | 30s-2 min | Best camera control, industry standard |
+| **Stable Video** | 100 frames/yr | Yes | ~4s | 30s-1 min | Cheapest per-frame, subtle motion |
+| **Luma AI** | Limited | Yes | 10s | 1-2 min | Photorealistic, good for luxury |
+| **Kling** | Limited | Yes | 30s | 1-3 min | Longer clips, competitive pricing |
+| **Pika 2.0** | Free tier | Yes | 10s | ~1 min | Beta API |
+
+### Decision: RunwayML first
+
+Best camera control for real estate — you guide dolly/pan direction via text prompts. 125 free credits is enough to build and test the full integration flow. Quality is strong.
+
+SVD (Stable Video Diffusion) as the cost-option fallback once credits run out.
+
+### Integration Architecture
+
+The `clips.job_id` field in the schema is already in place for async API jobs. Pipeline:
+
+```
+Worker polls clips WHERE status='queued'
+  → Worker calls provider API with photo URL
+  → API returns job_id immediately (status='processing')
+  → Worker stores job_id in clips.job_id
+  → Worker polls provider API / uses webhook every 30s
+  → On completion: download video, upload to R2, set status='done'
+  → On failure/timeout: status='error'
+```
+
+Provider-agnostic interface in `gpu-worker/src/providers/`:
+
+```typescript
+interface VideoProvider {
+  generate(opts: { imageUrl: string; prompt: string; duration: number }): Promise<{ jobId: string }>;
+  poll(jobId: string): Promise<'pending' | 'done' | 'error'>;
+  download(jobId: string): Promise<Buffer>;
+}
+```
+
+---
+
+## Option B — Self-Hosted (Open Source)
+
+Best for: no per-clip costs, running on your own GPU hardware.
+
+### The Field (ranked by viability)
+
+**1. CogVideoX-2B** — THUDM/CogVideo on HuggingFace
+- Image-to-video, Apache 2.0, **4GB VRAM minimum** (runs on a GTX 1080TI)
+- 6-second output at 720×480 — lower than ideal for professional use
+- Most accessible self-hosted option; realistic to run on a $200 GPU
+- HF: `THUDM/CogVideoX-2B-I2V`
+
+**2. Stable Video Diffusion — SVD** (Stability AI)
+- Image-to-video, 12-16GB VRAM for full quality
+- 14-25 frames output (~2.5-4s) — shorter than ideal
+- Purpose-built for photo animation; smooth realistic motion
+- HF: `stabilityai/stable-video-diffusion-img2vid`
+
+**3. AnimateDiff + Realistic Vision + ControlNet**
+- Image-to-video with photorealistic SDXL base
+- 8-12GB VRAM
+- Realistic Vision is fine-tuned for architectural photography
+- More flexible but more complex to tune
+
+**4. I2VGen-XL** — damo-vilab/i2vgen-xl
+- 1280×720 output, A10 GPU (~24GB) required
+- CC-BY-NC-ND license — **not commercial use**
+
+### Honest Assessment
+
+None of these produce output at the quality bar for professional real estate marketing today. CogVideoX outputs at 720×480. SVD is 2-4 seconds. AnimateDiff can produce unnatural motion on architectural content.
+
+**These are viable as a free tier fallback** — unlimited free clips while API providers handle high-quality paid tier. Not as the primary path until models improve (expected mid-2026).
+
+---
+
+## Supporting Stack — Upscaling, Staging, Sky
+
+Separate pipeline steps from clip generation.
+
+### Upscaling low-quality listing photos
+
+| Model | Repo | Use case | VRAM |
+|---|---|---|---|
+| Real-ESRGAN | `xinntao/Real-ESRGAN` | Deblur, JPEG artifacts, 4× upscale | CPU/GPU |
+| SwinIR | `JingyunLiang/SwinIR` | Heavy degradation | GPU |
+| NMKD Siax | GUI wrapper | Simpler deploy | CPU |
+
+Real-ESRGAN is the first pick — handles the most common listing photo problems (phone camera quality, JPEG compression).
+
+### Virtual staging (empty room → furnished)
+
+Stable Diffusion + ControlNet Depth is the standard open-source approach — depth map preserves room layout while inpainting furniture.
+
+No dedicated open model specifically for staging at commercial quality exists. Proprietary tools (Boxed.com, Staging AI) use custom fine-tuned models.
+
+### Sky replacement
+
+No confirmed open-source model with a live link (SkyFixer returned 404). Segmentation + compositing approach: segment sky with SAM, replace with a sky image library, feather edges.
+
+HF: `wpexperts/sky-replacement` — worth checking.
+
+---
+
+## Decision Summary
+
+| Phase | What | Why |
+|---|---|---|
+| **Now** | Wire RunwayML API into worker | 125 free credits, best camera control, ships fast |
+| **Phase 2** | Add Stable Video as paid fallback | Cheaper per frame, subtle motion |
+| **Phase 3** | CogVideoX-2B on Modal/Lambda as free tier | No per-clip cost, improving rapidly |
+| **Supporting** | Real-ESRGAN upscaling pipeline | Listing photos are often low quality |
+| **Future** | Virtual staging + sky replacement | Separate pipeline steps, not in clip worker |
+
+---
+
+## Official Links
+
+- RunwayML: https://docs.runwayml.com/
+- OpenAI Sora: https://platform.openai.com/docs/guides/video-generation
+- Stable Video: https://platform.stability.ai/
+- Luma AI: https://lumalabs.ai/developers
+- CogVideoX: https://huggingface.co/THUDM/CogVideoX-2B-I2V
+- Real-ESRGAN: https://github.com/xinntao/Real-ESRGAN
+- SwinIR: https://github.com/JingyunLiang/SwinIR

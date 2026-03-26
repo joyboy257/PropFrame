@@ -11,8 +11,8 @@
 **Rationale:**
 - Already provisioned with internal + public URLs
 - PG is the default path from Supabase/drizzle-orm setup
-- Railway private networking means the DB isn't exposed publicly
-- Internal URL works from Railway's GPU worker host
+- Railway private networking keeps the DB off the public internet
+- Internal URL works from Railway GPU worker host
 
 **Open questions:**
 - Should we add a read replica for the GPU worker to avoid competing with the app?
@@ -69,22 +69,46 @@
 **Processing flow:** (see `gpu-worker/src/index.ts`)
 
 **Open questions:**
-- Should the worker auto-scale to multiple instances? Need a lock (DB row) to avoid double-processing.
-- Currently no dead-letter queue for failed jobs after max retries.
+- Should the worker auto-scale to multiple instances? Need a DB lock to avoid double-processing.
+- No dead-letter queue for failed jobs after max retries.
 
 ---
 
-## AI Integration: Groq + Cohere (decided — Phase 1)
+## AI Integration (decided — Phase 1)
 
-**Decision:**
-- Groq Llama 3.3 70B for all text LLM tasks
-- Cohere Command R+ Vision for photo understanding
+### Text LLM
+**Groq Llama 3.3 70B** — fastest inference available, generous free tier.
 
-**Rationale:**
-- Both have generous free tiers
-- Groq is the fastest inference available at any price
-- Cohere Vision is the best free vision model for real estate/architectural imagery
+### Vision
+**Cohere Command R+ Vision** — best free vision model for real estate/architectural imagery.
+
+### Video Generation
+**RunwayML Gen-3 API** — best camera control for real estate, 125 free credits.
+
+**Pipeline:**
+- Worker polls `clips` WHERE `status='queued'`
+- Calls Runway API → stores `job_id` in `clips.job_id`, sets `status='processing'`
+- Polls Runway API every 30s
+- On completion: downloads video, uploads to R2, sets `status='done'` + `public_url`
+
+**Provider interface** (`gpu-worker/src/providers/index.ts`):
+```typescript
+interface VideoProvider {
+  generate(opts: { imageUrl: string; prompt: string }): Promise<{ jobId: string }>;
+  poll(jobId: string): Promise<'pending' | 'done' | 'error'>;
+  download(jobId: string): Promise<Buffer>;
+}
+```
 
 **Open questions:**
-- At what traffic level do we exceed Groq's 1K RPM limit?
-- Should we add response caching for repeated LLM calls on the same clip?
+- Webhook vs polling for job completion (webhooks more efficient but add complexity)
+- At what traffic level do we exceed Runway's rate limits?
+- Should we cache Runway responses for identical clip requests?
+
+### Self-Hosted (Phase 3)
+**CogVideoX-2B** on Modal/Lambda — when model quality improves enough, deploy as free tier.
+
+### Supporting Pipeline
+- **Real-ESRGAN** — upscaling before clip generation (listing photos are often low quality)
+- **Stable Diffusion + ControlNet** — virtual staging (future)
+- **SAM + compositing** — sky replacement (future)
