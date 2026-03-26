@@ -22,6 +22,7 @@ interface ClipGridProps {
   onGenerateClip: (photoId: string, motionStyle: string, resolution: string) => Promise<void>;
   onRetryClip?: (clipId: string) => void;
   generatingCount: number;
+  isGeneratingLocked: boolean;
 }
 
 const MOTION_STYLES = [
@@ -32,7 +33,7 @@ const MOTION_STYLES = [
   { value: 'custom', label: 'Custom' },
 ];
 
-export function ClipGrid({ clips, projectId, onGenerateClip, onRetryClip, generatingCount }: ClipGridProps) {
+export function ClipGrid({ clips, projectId, onGenerateClip, onRetryClip, generatingCount, isGeneratingLocked }: ClipGridProps) {
   const [selectedMotion, setSelectedMotion] = useState('push-in');
   const [selectedResolution, setSelectedResolution] = useState('720p');
 
@@ -98,6 +99,7 @@ export function ClipGrid({ clips, projectId, onGenerateClip, onRetryClip, genera
             clip={clip}
             onGenerate={() => onGenerateClip(clip.photoId, selectedMotion, selectedResolution)}
             onRetry={() => onRetryClip?.(clip.id)}
+            isGeneratingLocked={isGeneratingLocked}
           />
         ))}
       </div>
@@ -105,7 +107,7 @@ export function ClipGrid({ clips, projectId, onGenerateClip, onRetryClip, genera
   );
 }
 
-function ClipCard({ clip, onGenerate, onRetry }: { clip: Clip; onGenerate: () => void; onRetry: () => void }) {
+function ClipCard({ clip, onGenerate, onRetry, isGeneratingLocked }: { clip: Clip; onGenerate: () => void; onRetry: () => void; isGeneratingLocked: boolean }) {
   return (
     <div className={cn(
       'relative rounded-lg overflow-hidden border',
@@ -129,7 +131,12 @@ function ClipCard({ clip, onGenerate, onRetry }: { clip: Clip; onGenerate: () =>
       {/* Status overlay */}
       <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 opacity-0 hover:opacity-100 transition-opacity">
         {clip.status === 'queued' && (
-          <Button size="sm" onClick={onGenerate} className="gap-1.5">
+          <Button
+            size="sm"
+            onClick={onGenerate}
+            disabled={isGeneratingLocked}
+            className="gap-1.5"
+          >
             <Play className="w-3 h-3" /> Generate
           </Button>
         )}

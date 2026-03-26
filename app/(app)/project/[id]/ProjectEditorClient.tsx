@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { PhotoUploader } from '@/components/editor/PhotoUploader';
 import { ClipGrid, type Clip } from '@/components/editor/ClipGrid';
@@ -40,6 +40,54 @@ export default function ProjectEditorClient({
   const [clips, setClips] = useState<Clip[]>(initialClips);
   const [generatingCount, setGeneratingCount] = useState(0);
   const [activeTab, setActiveTab] = useState<'photos' | 'clips' | 'edit'>('photos');
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Poll clip statuses when there are in-flight clips
+  useEffect(() => {
+    const inFlight = clips.some(c => c.status === 'queued' || c.status === 'processing');
+    if (!inFlight) {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      return;
+    }
+
+    if (pollingRef.current) return; // already polling
+
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/projects/${project.id}`, {
+          credentials: 'include',
+        });
+        if (!res.ok) return;
+        const { clips: updated } = await res.json();
+
+        // Merge: replace local clips with server state
+        setClips(prev => {
+          if (updated.length === 0) return prev;
+          // Only replace statuses/URLs — don't reorder
+          const merged = prev.map(local => {
+            const server = updated.find((s: Clip) => s.id === local.id);
+            return server ? { ...local, ...server } : local;
+          });
+          // Add any new clips the server has that we don't
+          const localIds = new Set(prev.map(c => c.id));
+          const newOnServer = updated.filter((s: Clip) => !localIds.has(s.id));
+          return [...merged, ...newOnServer];
+        });
+      } catch {
+        // silent fail — will retry on next interval
+      }
+    }, 5000);
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [clips, project.id]);
 
   const handlePhotoUploaded = useCallback((photo: Photo) => {
     setPhotos(prev => [...prev, photo]);
@@ -101,7 +149,7 @@ export default function ProjectEditorClient({
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="border-b border-slate-800 px-4 py-3 flex items-center gap-4 shrink-0">
-        <Link href="/ai/dashboard" className="text-slate-500 hover:text-slate-300 transition-colors">
+        <Link href="/dashboard" className="text-slate-500 hover:text-slate-300 transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </Link>
         <div className="flex-1 min-w-0">
@@ -176,6 +224,7 @@ export default function ProjectEditorClient({
               onGenerateClip={handleGenerateClip}
               onRetryClip={handleRetryClip}
               generatingCount={generatingCount}
+              isGeneratingLocked={generatingCount >= 5}
             />
           </div>
         )}

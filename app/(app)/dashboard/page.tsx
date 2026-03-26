@@ -41,7 +41,7 @@ export default async function DashboardPage() {
             {allProjects.length} project{allProjects.length !== 1 ? 's' : ''} &middot; {totalClips} total clips
           </p>
         </div>
-        <Link href="/ai/project/new">
+        <Link href="/project/new">
           <Button className="gap-2">
             <Plus className="w-4 h-4" />
             New Project
@@ -71,7 +71,7 @@ export default async function DashboardPage() {
           <Film className="w-12 h-12 text-slate-700 mx-auto mb-4" />
           <h2 className="text-lg font-semibold text-slate-300 mb-2">No projects yet</h2>
           <p className="text-sm text-slate-500 mb-6">Upload your first listing photos to get started.</p>
-          <Link href="/ai/project/new">
+          <Link href="/project/new">
             <Button className="gap-2">
               <Plus className="w-4 h-4" />
               Create your first project
@@ -81,7 +81,7 @@ export default async function DashboardPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {allProjects.map((project) => (
-            <Link key={project.id} href={`/ai/project/${project.id}`}>
+            <Link key={project.id} href={`/project/${project.id}`}>
               <div className="group bg-slate-900 border border-slate-800 rounded-xl p-4 hover:border-slate-700 transition-all hover:-translate-y-0.5 cursor-pointer h-full">
                 {/* Thumbnail */}
                 <div className="aspect-video bg-slate-800 rounded-lg mb-4 overflow-hidden">
