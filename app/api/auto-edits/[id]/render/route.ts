@@ -8,7 +8,7 @@ import Redis from 'ioredis';
 
 export const runtime = 'nodejs';
 
-const AUTO_EDIT_QUEUE_NAME = 'auto-edit-render';
+const AUTO_EDIT_QUEUE_NAME = 'propframe:auto-edit-render';
 
 const VALID_MUSIC_KEYS = ['upbeat-1', 'warm-1', 'modern-1', 'cinematic-1', 'acoustic-1'] as const;
 type MusicKey = typeof VALID_MUSIC_KEYS[number];
