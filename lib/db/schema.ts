@@ -37,6 +37,9 @@ export const photos = pgTable('photos', {
   order: integer('order').notNull().default(0),
   virtualStaged: boolean('virtual_staged').notNull().default(false),
   skyReplaced: boolean('sky_replaced').notNull().default(false),
+  skyStyle: varchar('sky_style', { length: 50 }), // 'blue-sky' | 'golden-hour' | 'twilight' | 'custom' | null
+  skyReplacedAt: timestamp('sky_replaced_at'),
+  skyStorageKey: text('sky_storage_key'), // R2 key of the sky-replaced version
   publicUrl: text('public_url'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });

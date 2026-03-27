@@ -13,15 +13,18 @@ export async function getPool(): Promise<pg.Pool> {
 export async function updatePhotoSkyDone(
   photoId: string,
   skyStorageKey: string,
-  skyPublicUrl: string
+  skyPublicUrl: string,
+  skyStyle: string
 ): Promise<void> {
   await pool.query(
     `UPDATE photos 
      SET skyReplaced = true, 
+         skyStyle = $4,
+         skyReplacedAt = NOW(),
          skyStorageKey = $2, 
-         skyPublicUrl = $3 
+         publicUrl = $3 
      WHERE id = $1`,
-    [photoId, skyStorageKey, skyPublicUrl]
+    [photoId, skyStorageKey, skyPublicUrl, skyStyle]
   );
 }
 
