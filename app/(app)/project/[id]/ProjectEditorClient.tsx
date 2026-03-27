@@ -6,10 +6,12 @@ import { PhotoUploader } from '@/components/editor/PhotoUploader';
 import { ClipGrid, type Clip } from '@/components/editor/ClipGrid';
 import { AutoEditTab } from '@/components/editor/AutoEditTab';
 import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
 import { InlineEdit } from '@/components/InlineEdit';
 import { SortablePhotoGrid } from '@/components/editor/SortablePhotoGrid';
 import { VirtualStageModal } from '@/components/editor/VirtualStageModal';
-import { ArrowLeft, Wand2, Sparkles, Film, Trash2 } from 'lucide-react';
+import { ArrowLeft, Wand2, Sparkles, Film, Trash2, Loader2, CheckCircle } from 'lucide-react';
+import { MUSIC_TRACKS } from '@/lib/music';
 import { toast } from 'sonner';
 
 interface Photo {
@@ -66,6 +68,15 @@ export default function ProjectEditorClient({
   const [activeTab, setActiveTab] = useState<'photos' | 'clips' | 'edit'>('photos');
   const [stagingPhoto, setStagingPhoto] = useState<Photo | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Generate Video state
+  const [showRenderModal, setShowRenderModal] = useState(false);
+  const [renderStatus, setRenderStatus] = useState<'idle' | 'rendering' | 'done' | 'error'>('idle');
+  const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | null>(null);
+  const [renderedAutoEditId, setRenderedAutoEditId] = useState<string | null>(null);
+  const [renderModalTitle, setRenderModalTitle] = useState('');
+  const [renderModalMusic, setRenderModalMusic] = useState<string>('upbeat-1');
+  const renderPollingRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchProject = useCallback(async () => {
     try {
@@ -228,6 +239,116 @@ export default function ProjectEditorClient({
     toast.success('Project renamed');
   }, [project.id, onProjectUpdated]);
 
+  // Generate Video handlers
+  const doneClips = clips.filter(c => c.status === 'done');
+
+  const handleOpenRenderModal = useCallback(() => {
+    setRenderModalTitle(project.name);
+    setRenderModalMusic('upbeat-1');
+    setShowRenderModal(true);
+  }, [project.name]);
+
+  const handleCloseRenderModal = useCallback(() => {
+    if (renderStatus === 'rendering') return; // don't close during render
+    setShowRenderModal(false);
+    setRenderStatus('idle');
+    setRenderedVideoUrl(null);
+  }, [renderStatus]);
+
+  const pollRenderStatus = useCallback(async (autoEditId: string) => {
+    try {
+      const res = await fetch(`/api/auto-edits/${autoEditId}`, { credentials: 'include' });
+      if (!res.ok) return;
+      const { autoEdit } = await res.json();
+
+      if (autoEdit.status === 'done') {
+        setRenderStatus('done');
+        setRenderedVideoUrl(autoEdit.publicUrl);
+        if (renderPollingRef.current) clearInterval(renderPollingRef.current);
+      } else if (autoEdit.status === 'error') {
+        setRenderStatus('error');
+        toast.error(autoEdit.errorMessage || 'Rendering failed');
+        if (renderPollingRef.current) clearInterval(renderPollingRef.current);
+      }
+    } catch {
+      // silent
+    }
+  }, []);
+
+  const handleGenerateVideo = useCallback(async () => {
+    if (doneClips.length < 2) {
+      toast.error('Select at least 2 clips');
+      return;
+    }
+
+    if (!renderModalTitle.trim()) {
+      toast.error('Title is required');
+      return;
+    }
+
+    setRenderStatus('rendering');
+
+    try {
+      // First create the auto-edit
+      const createRes = await fetch('/api/auto-edits', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          projectId: project.id,
+          clipIds: doneClips.map(c => c.id),
+          titleText: renderModalTitle.trim(),
+          musicKey: renderModalMusic,
+        }),
+      });
+
+      if (!createRes.ok) {
+        const err = await createRes.json();
+        toast.error(err.error || 'Failed to create auto-edit');
+        setRenderStatus('idle');
+        return;
+      }
+
+      const { autoEdit } = await createRes.json();
+      setRenderedAutoEditId(autoEdit.id);
+
+      // Then trigger render
+      const renderRes = await fetch(`/api/auto-edits/${autoEdit.id}/render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          titleText: renderModalTitle.trim(),
+          musicKey: renderModalMusic,
+        }),
+      });
+
+      if (!renderRes.ok) {
+        const err = await renderRes.json();
+        toast.error(err.error || 'Failed to start rendering');
+        setRenderStatus('idle');
+        return;
+      }
+
+      toast.success('Video rendering started!');
+
+      // Start polling
+      renderPollingRef.current = setInterval(() => {
+        pollRenderStatus(autoEdit.id);
+      }, 3000);
+    } catch {
+      toast.error('Network error. Please try again.');
+      setRenderStatus('idle');
+    }
+  }, [doneClips, renderModalTitle, renderModalMusic, project.id, pollRenderStatus]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (renderPollingRef.current) clearInterval(renderPollingRef.current);
+    };
+  }, []);
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -331,6 +452,45 @@ export default function ProjectEditorClient({
               generatingCount={generatingCount}
               isGeneratingLocked={generatingCount >= 5}
             />
+
+            {/* Generate Video button - shown when 2+ clips are done */}
+            {doneClips.length >= 2 && (
+              <div className="mt-6 flex justify-center">
+                <Button
+                  onClick={handleOpenRenderModal}
+                  size="lg"
+                  className="gap-2"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Generate Video
+                  <span className="text-xs opacity-70">({doneClips.length} clips)</span>
+                </Button>
+              </div>
+            )}
+
+            {/* Rendering indicator */}
+            {renderStatus === 'rendering' && (
+              <div className="mt-4 p-4 bg-slate-900/80 border border-amber-500/30 rounded-xl text-center">
+                <Loader2 className="w-6 h-6 text-amber-400 mx-auto mb-2 animate-spin" />
+                <p className="text-slate-300 font-medium">Rendering your video...</p>
+                <p className="text-sm text-slate-500 mt-1">This may take a few minutes</p>
+              </div>
+            )}
+
+            {/* Rendered video preview */}
+            {renderStatus === 'done' && renderedVideoUrl && (
+              <div className="mt-4 p-4 bg-slate-900/80 border border-emerald-500/30 rounded-xl">
+                <div className="flex items-center gap-2 mb-3">
+                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                  <p className="text-slate-300 font-medium">Your video is ready!</p>
+                </div>
+                <video
+                  src={renderedVideoUrl}
+                  controls
+                  className="w-full rounded-lg"
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -343,6 +503,107 @@ export default function ProjectEditorClient({
           />
         )}
       </div>
+
+      {/* Generate Video Modal */}
+      <Modal
+        open={showRenderModal}
+        onClose={handleCloseRenderModal}
+        title="Generate Video"
+        size="md"
+        footer={
+          renderStatus === 'idle' ? (
+            <>
+              <Button variant="secondary" onClick={handleCloseRenderModal}>
+                Cancel
+              </Button>
+              <Button onClick={handleGenerateVideo} className="gap-2">
+                <Sparkles className="w-4 h-4" />
+                Generate (1 credit)
+              </Button>
+            </>
+          ) : renderStatus === 'rendering' ? (
+            <Button disabled className="gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Rendering...
+            </Button>
+          ) : (
+            <Button variant="secondary" onClick={handleCloseRenderModal}>
+              Close
+            </Button>
+          )
+        }
+      >
+        {renderStatus === 'idle' && (
+          <div className="space-y-4">
+            {/* Clip count */}
+            <div className="bg-slate-800/50 rounded-lg px-4 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-300 font-medium">Clips to assemble</p>
+                <p className="text-xs text-slate-500">{doneClips.length} clips selected</p>
+              </div>
+              <Film className="w-5 h-5 text-blue-400" />
+            </div>
+
+            {/* Credit cost */}
+            <div className="bg-slate-800/50 rounded-lg px-4 py-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-300 font-medium">Credit cost</p>
+                <p className="text-xs text-slate-500">1 credit will be deducted</p>
+              </div>
+              <span className="text-lg font-bold text-amber-400">1</span>
+            </div>
+
+            {/* Title input */}
+            <div>
+              <label className="text-sm font-medium text-slate-300 mb-2 block">
+                Title Screen Text
+              </label>
+              <input
+                type="text"
+                value={renderModalTitle}
+                onChange={e => setRenderModalTitle(e.target.value)}
+                placeholder="123 Main Street, Los Angeles CA"
+                className="w-full h-10 px-3 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Music selector */}
+            <div>
+              <label className="text-sm font-medium text-slate-300 mb-2 block">
+                Background Music
+              </label>
+              <select
+                value={renderModalMusic}
+                onChange={e => setRenderModalMusic(e.target.value)}
+                className="w-full h-10 px-3 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {(Object.keys(MUSIC_TRACKS) as Array<keyof typeof MUSIC_TRACKS>).map(key => (
+                  <option key={key} value={key}>
+                    {MUSIC_TRACKS[key].name} — {MUSIC_TRACKS[key].mood}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {renderStatus === 'rendering' && (
+          <div className="text-center py-8">
+            <Loader2 className="w-10 h-10 text-amber-400 mx-auto mb-4 animate-spin" />
+            <p className="text-slate-300 font-medium mb-1">Rendering your video...</p>
+            <p className="text-sm text-slate-500">This may take a few minutes. You can close this modal and continue working.</p>
+          </div>
+        )}
+
+        {renderStatus === 'error' && (
+          <div className="text-center py-8">
+            <p className="text-red-400 font-medium mb-2">Rendering failed</p>
+            <Button variant="secondary" onClick={() => setRenderStatus('idle')}>
+              Try Again
+            </Button>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
