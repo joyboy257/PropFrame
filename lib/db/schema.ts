@@ -1,6 +1,48 @@
 import { pgTable, uuid, text, timestamp, integer, boolean, varchar, decimal, jsonb, serial } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
+// ─── Organizations ─────────────────────────────────────────────────────────────
+export const organizations = pgTable('organizations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  ownerUserId: uuid('owner_user_id').notNull(), // references users — set after users table
+  plan: varchar('plan', { length: 20 }).notNull().default('starter'), // starter | pro | agency
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// ─── Organization Members ───────────────────────────────────────────────────────
+export const organizationMembers = pgTable('organization_members', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  role: varchar('role', { length: 20 }).notNull().default('agent'), // director | agent
+  joinedAt: timestamp('joined_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ─── Organization Invitations ──────────────────────────────────────────────────
+export const organizationInvitations = pgTable('organization_invitations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  email: varchar('email', { length: 255 }).notNull(),
+  token: varchar('token', { length: 64 }).notNull().unique(), // nanoid token
+  role: varchar('role', { length: 20 }).notNull().default('agent'), // director | agent
+  status: varchar('status', { length: 20 }).notNull().default('pending'), // pending | accepted | expired
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ─── Organization Credits (pool) ────────────────────────────────────────────────
+export const organizationCredits = pgTable('organization_credits', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  orgId: uuid('org_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
+  amount: integer('amount').notNull().default(0), // pool amount
+  expiresAt: timestamp('expires_at'), // null = never expires (personal credits); monthly expiry for org-pool
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // ─── Users ────────────────────────────────────────────────────────────────────
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -10,8 +52,9 @@ export const users = pgTable('users', {
   googleId: varchar('google_id', { length: 255 }),
   googleEmail: varchar('google_email', { length: 255 }),
   stripeCustomerId: varchar('stripe_customer_id', { length: 255 }),
-  credits: integer('credits').notNull().default(1000), // 1000 = $10 free
+  credits: integer('credits').notNull().default(40), // 40 = $10 free (1 credit = $0.25)
   plan: varchar('plan', { length: 20 }).notNull().default('starter'), // starter | pro | scale
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
@@ -20,7 +63,9 @@ export const users = pgTable('users', {
 export const projects = pgTable('projects', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
   name: varchar('name', { length: 255 }).notNull(),
+  cdcNumber: varchar('cea_number', { length: 50 }),
   status: varchar('status', { length: 50 }).notNull().default('active'), // active | processing | complete
   clipCount: integer('clip_count').notNull().default(0),
   thumbnailUrl: text('thumbnail_url'),
@@ -86,8 +131,9 @@ export const autoEdits = pgTable('auto_edits', {
 export const creditTransactions = pgTable('credit_transactions', {
   id: uuid('id').primaryKey().defaultRandom(),
   userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  organizationId: uuid('organization_id').references(() => organizations.id, { onDelete: 'set null' }), // org-level credit movements
   amount: integer('amount').notNull(), // positive = credit, negative = debit
-  type: varchar('type', { length: 50 }).notNull(), // signup | purchase | clip_generation | auto_edit | virtual_staging | sky_replacement | music_generation
+  type: varchar('type', { length: 50 }).notNull(), // signup | purchase | clip_generation | auto_edit | virtual_staging | sky_replacement | music_generation | org_topup
   referenceId: uuid('reference_id'), // clip_id, photo_id, auto_edit_id, etc.
   description: varchar('description', { length: 255 }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -114,13 +160,36 @@ export const passwordResetTokens = pgTable('password_reset_tokens', {
 });
 
 // ─── Relations ────────────────────────────────────────────────────────────────
-export const usersRelations = relations(users, ({ many }) => ({
+export const organizationsRelations = relations(organizations, ({ one, many }) => ({
+  owner: one(users, { fields: [organizations.ownerUserId], references: [users.id] }),
+  members: many(organizationMembers),
+  invitations: many(organizationInvitations),
+  credits: many(organizationCredits),
+}));
+
+export const organizationMembersRelations = relations(organizationMembers, ({ one }) => ({
+  org: one(organizations, { fields: [organizationMembers.orgId], references: [organizations.id] }),
+  user: one(users, { fields: [organizationMembers.userId], references: [users.id] }),
+}));
+
+export const organizationInvitationsRelations = relations(organizationInvitations, ({ one }) => ({
+  org: one(organizations, { fields: [organizationInvitations.orgId], references: [organizations.id] }),
+}));
+
+export const organizationCreditsRelations = relations(organizationCredits, ({ one }) => ({
+  org: one(organizations, { fields: [organizationCredits.orgId], references: [organizations.id] }),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
   projects: many(projects),
   creditTransactions: many(creditTransactions),
+  organization: one(organizations, { fields: [users.organizationId], references: [organizations.id] }),
+  organizationMemberships: many(organizationMembers),
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   user: one(users, { fields: [projects.userId], references: [users.id] }),
+  organization: one(organizations, { fields: [projects.organizationId], references: [organizations.id] }),
   photos: many(photos),
   clips: many(clips),
   autoEdits: many(autoEdits),
@@ -142,4 +211,5 @@ export const autoEditsRelations = relations(autoEdits, ({ one }) => ({
 
 export const creditTransactionsRelations = relations(creditTransactions, ({ one }) => ({
   user: one(users, { fields: [creditTransactions.userId], references: [users.id] }),
+  organization: one(organizations, { fields: [creditTransactions.organizationId], references: [organizations.id] }),
 }));
