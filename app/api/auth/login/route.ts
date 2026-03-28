@@ -1,10 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserByEmail, createUser, createSession } from '@/lib/db/auth';
 import { nanoid } from 'nanoid';
+import { checkRateLimit, getClientIp } from '@/lib/ratelimit';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
+  // Rate limit check
+  const ip = getClientIp(req);
+  const { allowed, retryAfter } = checkRateLimit(ip);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: 'Too many requests. Please try again later.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': String(retryAfter) },
+      }
+    );
+  }
+
   try {
     const { email } = await req.json();
 

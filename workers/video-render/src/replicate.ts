@@ -1,87 +1,118 @@
-import Replicate from 'replicate';
 import type { MotionStyle, Resolution } from './types.js';
 
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_TOKEN || '',
-});
+const BASE_URL = 'https://api.dev.runwayml.com/v1';
 
-// Map PropFrame motion styles to Replicate model prompts
 function buildPrompt(motionStyle: MotionStyle, customPrompt: string | null): string {
   const stylePrompts: Record<MotionStyle, string> = {
-    'push-in': 'smooth push-in towards subject, cinematic, 8 seconds',
-    'zoom-out': 'slow zoom out revealing room, cinematic, 8 seconds',
-    'pan-left': 'slow pan left revealing space, cinematic, 8 seconds',
-    'pan-right': 'slow pan right revealing space, cinematic, 8 seconds',
+    'push-in': 'smooth push-in towards subject, cinematic',
+    'zoom-out': 'slow zoom out revealing room, cinematic',
+    'pan-left': 'slow pan left revealing space, cinematic',
+    'pan-right': 'slow pan right revealing space, cinematic',
     'custom': '',
   };
 
-  const base = customPrompt
-    ? customPrompt.trim()
-    : stylePrompts[motionStyle];
-
+  const base = customPrompt?.trim() || stylePrompts[motionStyle];
   return `${base}, high quality, smooth motion, real estate photography`;
 }
 
 export interface VideoGenResult {
-  videoUrl: string; // URL of the generated video from Replicate
+  videoUrl: string;
 }
 
-// Generate video from image using CogVideoX on Replicate
-// CogVideoX-5B is fast (30-60s) and produces good Ken Burns style motion
-export async function generateClipVideo(
-  imageUrl: string,
-  motionStyle: MotionStyle,
-  customPrompt: string | null,
-  resolution: Resolution
-): Promise<VideoGenResult> {
-  const prompt = buildPrompt(motionStyle, customPrompt);
-  const model = 'zsxkib/cogvideo-5b-filtered:4e39e939b89eec4af5e6c6cd9a5a3c20e3cfb9a6c0d3ee5fd71da5e58a63c0f4';
+export interface GenerateClipParams {
+  imageUrl: string;
+  motionStyle: MotionStyle;
+  customPrompt: string | null;
+  resolution: Resolution;
+}
 
-  // Duration: 5 seconds for clip-style output
-  const numFrames = resolution === '720p' ? 49 : resolution === '1080p' ? 49 : 73;
+/**
+ * Generate a video clip from an image using Runway Gen-3.
+ *
+ * Runway Gen-3 outputs 1280×720 — significantly better than CogVideoX's 480p.
+ * API: https://api.dev.runwayml.com/v1/image_to_video
+ */
+export async function generateClipVideo(params: GenerateClipParams): Promise<VideoGenResult> {
+  const { imageUrl, motionStyle, customPrompt } = params;
 
-  const output = await replicate.run(model, {
-    input: {
-      prompt,
-      input_image: imageUrl,
-      num_frames: numFrames,
-      guidance_scale: 3.5,
-      num_inference_steps: 25,
-    },
-  }) as unknown as { video: string } | string;
-
-  // Replicate returns different structures depending on version
-  const videoUrl = typeof output === 'string' ? output : (output as { video: string }).video;
-
-  if (!videoUrl) {
-    throw new Error('Replicate returned no video URL');
+  const apiKey = process.env.RUNWAY_API_KEY;
+  if (!apiKey) {
+    throw new Error('RUNWAY_API_KEY is not set');
   }
+
+  const prompt = buildPrompt(motionStyle, customPrompt);
+  // Clamp to Runway's max of 10 seconds
+  const duration = 10;
+
+  const response = await fetch(`${BASE_URL}/image_to_video`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      image_url: imageUrl,
+      prompt,
+      model: 'gen3a_turbo',
+      duration,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`Runway Gen-3 failed (${response.status}): ${body}`);
+  }
+
+  // Runway returns { id: string, status: string, estimated_completion_time?: number }
+  const data = await response.json() as { id: string };
+
+  // Poll until the job is done (Runway jobs are synchronous-ish but may take a few seconds)
+  const videoUrl = await pollRunwayJob(data.id, apiKey);
 
   return { videoUrl };
 }
 
-// Poll a Replicate prediction until it completes
-export async function pollReplicatePrediction(
-  predictionId: string,
-  maxWaitMs = 300000 // 5 minutes
-): Promise<{ status: string; output?: unknown }> {
+async function pollRunwayJob(jobId: string, apiKey: string): Promise<string> {
+  const maxWaitMs = 5 * 60 * 1000; // 5 minutes
   const start = Date.now();
+  const pollInterval = 3000; // 3 seconds
 
   while (Date.now() - start < maxWaitMs) {
-    const prediction = await replicate.predictions.get(predictionId);
+    const response = await fetch(`${BASE_URL}/jobs/${jobId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-    if (prediction.status === 'succeeded') {
-      return { status: 'succeeded', output: prediction.output };
-    }
-    if (prediction.status === 'failed' || prediction.status === 'canceled') {
-      return { status: prediction.status };
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Runway poll failed (${response.status}): ${body}`);
     }
 
-    // Wait 5 seconds between polls
-    await sleep(5000);
+    const data = await response.json() as {
+      status: string;
+      artifacts?: Array<{ type: string; url: string }>;
+    };
+
+    if (data.status === 'succeeded') {
+      const videoArtifact = data.artifacts?.find(a => a.type === 'video');
+      if (!videoArtifact?.url) {
+        throw new Error('Runway job succeeded but no video artifact found');
+      }
+      return videoArtifact.url;
+    }
+
+    if (data.status === 'failed') {
+      throw new Error('Runway Gen-3 job failed');
+    }
+
+    // Wait before polling again
+    await sleep(pollInterval);
   }
 
-  return { status: 'timeout' };
+  throw new Error('Runway Gen-3 job timed out after 5 minutes');
 }
 
 function sleep(ms: number): Promise<void> {

@@ -21,6 +21,9 @@ export default function LandingFooter() {
             <p className="text-xs text-slate-500 leading-relaxed">
               AI-powered real estate video generation. Transform listing photos into cinematic marketing videos.
             </p>
+            <p className="text-xs text-slate-600 mt-2 leading-relaxed">
+              160 Robinson Rd, #14-04, Singapore 068914 · 8825 4082
+            </p>
           </div>
 
           {/* Product */}
