@@ -1,3 +1,4 @@
+// DEPRECATED: This file contains reference implementations of auth patterns. Actual auth is per-route: getSessionToken() + verifyToken().
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { verifyToken } from '@/lib/db/auth';
@@ -19,14 +20,4 @@ export function authMiddleware(request: NextRequest) {
   }
 
   return payload; // { userId, tokenId }
-}
-
-export function withAuth<T = unknown>(
-  handler: (req: NextRequest, context: { userId: string }) => Promise<NextResponse>
-) {
-  return async (req: NextRequest) => {
-    const authResult = authMiddleware(req);
-    if (authResult instanceof NextResponse) return authResult;
-    return handler(req, { userId: (authResult as { userId: string }).userId });
-  };
 }

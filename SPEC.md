@@ -172,12 +172,26 @@ Target user: real estate photographers, agents, brokers. They photograph empty r
 
 ### Billing (Stripe)
 - Credits system: buy credits, deduct per operation
-- $10 free signup credit
-- Credit packages: $20 (250 credits), $50 (625 credits), $100 (1300 credits)
+- **1 credit = $0.25 USD** — COGS-calibrated pricing (profitable from day 1)
+  - COGS: Virtual staging $0.032, Sky replacement $0.002, Clip $1.00
+  - All operations priced at 5-10x COGS with healthy margins
+- **$10 free signup credit = 40 credits** (no free clips — clips are expensive)
+  - Clips sold separately OR as part of credit packs
+  - Free signup: enough for ~8 virtual stagings or 4 sky replacements (no clips)
+- Credit packages:
+  | Package | Credits | USD Price | SGD Price |
+  |---------|---------|-----------|-----------|
+  | Starter | 50 | $12.50 | S$17 |
+  | Standard | 200 | $49 | S$65 |
+  | Pro | 600 | $149 | S$199 |
+  | Team | 1,200 | $299 | S$399 |
+  Note: SGD prices are calibrated to ~0.75 SGD/USD exchange rate — they match USD value, not a fixed SGD peg.
 - No subscription. Pay-as-you-go only.
+- **SGD Pricing Policy**: SGD packages are priced at approximately 0.75 SGD/USD (matching USD value at current rates). Policy: review and reprice if SGD/USD exchange rate moves more than ±15% from 0.75, reviewed quarterly. Stripe fees (2.9% + $0.30 per transaction) are absorbed in the per-pack price — no additional fees.
 - Stripe Checkout for payment
 - Webhook handling: credit top-up on successful payment
 - Invoice history in settings
+- **Singapore GST**: Does not apply at current revenue level (< S$1M/year). SGD checkout sessions document this exemption via session metadata. Future switchover: when SGD revenue exceeds S$1M, register with IRAS and enable Stripe Tax (see checkout route for implementation notes).
 
 ### Project Management
 - Projects table: name, created date, clip count, status
@@ -394,15 +408,15 @@ AutoEdit {
 ```
 
 ### Credit Pricing
-| Operation | Credits |
-|---|---|
-| Clip 720p | 1 credit |
-| Clip 1080p | 2 credits |
-| Clip 4K | 4 credits |
-| Auto-Edit assembly | 1 credit |
-| Virtual Staging | 1 credit/photo |
-| Sky Replacement | 1 credit/photo |
-| AI Music (60s) | 2 credits |
+| Operation | Credits | Price | COGS | Margin |
+|---|---|---|---|---|
+| Clip 720p | 10 credits | $2.50 | $1.00 | 60% |
+| Clip 1080p | 12 credits | $3.00 | ~$1.00 | 67% |
+| Clip 4K | 16 credits | $4.00 | ~$1.00 | 75% |
+| Virtual Staging | 5 credits | $1.25 | $0.032 | 97% |
+| Sky Replacement | 2 credits | $0.50 | $0.002 | 99.6% |
+| AI Music (60s) | 8 credits | $2.00 | ~$0.50 | 75% |
+| Auto-Edit assembly | 2 credits | $0.50 | ~$0.01 | 98% |
 
 ### Authentication Flow
 1. User submits email → magic link sent via Resend

@@ -4,15 +4,32 @@ import { useState } from 'react';
 import { X, Loader2, Check, Coins } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
-import { CREDIT_PACKAGES, dollarsToCredits } from '@/lib/credits';
+import { USD_CREDIT_PACKAGES, SGD_CREDIT_PACKAGES } from '@/lib/credits';
 
-const PACKAGES = CREDIT_PACKAGES.map((pkg, i) => ({
-  dollars: pkg.dollars,
-  label: pkg.label,
-  popular: i === 1,
-  credits: pkg.credits,
-  bonus: pkg.bonus,
-}));
+type Currency = 'USD' | 'SGD';
+
+const CURRENCY_CONFIG = {
+  USD: {
+    packages: USD_CREDIT_PACKAGES.map((pkg, i) => ({
+      ...pkg,
+      label: pkg.label,
+      popular: i === 1,
+      price: `$${pkg.dollars}`,
+      perCredit: `$${(pkg.dollars / (pkg.credits + pkg.bonus)).toFixed(3)}/credit`,
+    })),
+    symbol: '$',
+  },
+  SGD: {
+    packages: SGD_CREDIT_PACKAGES.map((pkg, i) => ({
+      ...pkg,
+      label: pkg.label,
+      popular: i === 1,
+      price: `S$${pkg.sgd}`,
+      perCredit: `S$${(pkg.sgd / (pkg.credits + pkg.bonus)).toFixed(3)}/credit`,
+    })),
+    symbol: 'S$',
+  },
+} as const;
 
 interface BuyCreditsModalProps {
   onClose: () => void;
@@ -20,16 +37,24 @@ interface BuyCreditsModalProps {
 }
 
 export function BuyCreditsModal({ onClose, onSuccess }: BuyCreditsModalProps) {
+  const [currency, setCurrency] = useState<Currency>('USD');
   const [loading, setLoading] = useState<number | null>(null);
 
-  const handlePurchase = async (pkg: typeof PACKAGES[0]) => {
-    setLoading(pkg.dollars);
+  const config = CURRENCY_CONFIG[currency];
+  const packages = config.packages;
+
+  const handlePurchase = async (pkg: typeof packages[0]) => {
+    setLoading(currency === 'USD' ? pkg.dollars : pkg.sgd);
     try {
       const res = await fetch('/api/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ dollars: pkg.dollars }),
+        body: JSON.stringify({
+          dollars: currency === 'USD' ? pkg.dollars : undefined,
+          sgd: currency === 'SGD' ? pkg.sgd : undefined,
+          currency,
+        }),
       });
 
       if (!res.ok) {
@@ -72,11 +97,37 @@ export function BuyCreditsModal({ onClose, onSuccess }: BuyCreditsModalProps) {
           </button>
         </div>
 
+        {/* Currency Toggle */}
+        <div className="px-6 pb-4">
+          <div className="flex items-center gap-1 p-1 bg-slate-800 rounded-lg w-fit">
+            <button
+              onClick={() => setCurrency('USD')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                currency === 'USD'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              USD
+            </button>
+            <button
+              onClick={() => setCurrency('SGD')}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                currency === 'SGD'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              SGD
+            </button>
+          </div>
+        </div>
+
         {/* Packages */}
         <div className="px-6 pb-6 space-y-3">
-          {PACKAGES.map((pkg) => (
+          {packages.map((pkg) => (
             <div
-              key={pkg.dollars}
+              key={pkg.label}
               className={`relative flex items-center justify-between p-4 rounded-xl border transition-colors ${
                 pkg.popular
                   ? 'bg-blue-600/10 border-blue-500/40'
@@ -101,17 +152,17 @@ export function BuyCreditsModal({ onClose, onSuccess }: BuyCreditsModalProps) {
                   )}
                 </div>
                 <div className="text-xs text-slate-500 mt-0.5">
-                  ${pkg.dollars} — ${(pkg.dollars / (pkg.credits + pkg.bonus)).toFixed(3)}/credit
+                  {pkg.price} — {pkg.perCredit}
                 </div>
               </div>
 
               <Button
                 variant={pkg.popular ? 'primary' : 'secondary'}
                 size="sm"
-                loading={loading === pkg.dollars}
+                loading={loading === (currency === 'USD' ? pkg.dollars : pkg.sgd)}
                 onClick={() => handlePurchase(pkg)}
               >
-                ${pkg.dollars}
+                {pkg.price}
               </Button>
             </div>
           ))}

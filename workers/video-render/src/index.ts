@@ -39,11 +39,23 @@ async function main() {
   });
 
   worker.on('failed', (job, err) => {
-    console.error(`[${job?.id}] ✘ Failed clip ${job?.data.clipId}: ${err.message}`);
+    const alert = {
+      event: 'worker.job.failed',
+      jobId: job?.id,
+      clipId: job?.data.clipId,
+      error: err.message,
+      stack: err.stack,
+    };
+    console.error('[Worker] Job failed:', JSON.stringify(alert));
   });
 
   worker.on('error', (err) => {
-    console.error('Worker error:', err);
+    const alert = {
+      event: 'worker.error',
+      error: err.message,
+      stack: err.stack,
+    };
+    console.error('[Worker] Error:', JSON.stringify(alert));
   });
 
   // ─── Graceful shutdown ───────────────────────────────────────────────────
@@ -59,7 +71,7 @@ async function main() {
   process.on('SIGINT', () => shutdown('SIGINT'));
 
   console.log(`📡 Worker listening on queue "${QUEUE_NAME}" (concurrency: ${process.env.WORKER_CONCURRENCY || 2})`);
-  console.log(`🔗 Replicate token: ${process.env.REPLICATE_API_TOKEN ? 'set' : 'MISSING — using mock mode'}`);
+  console.log(`🔗 Runway API key: ${process.env.RUNWAY_API_KEY ? 'set' : 'MISSING — check RUNWAY_API_KEY'}`);
   console.log(`💾 Database: ${process.env.DATABASE_URL ? 'connected' : 'MISSING — check DATABASE_URL'}`);
 }
 

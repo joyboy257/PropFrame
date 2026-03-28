@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { autoEdits, projects, users } from '@/lib/db/schema';
 import { verifyToken, deductCredits } from '@/lib/db/auth';
+import { getSessionToken } from '@/lib/auth/cookies';
 import { eq, and } from 'drizzle-orm';
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
@@ -14,7 +15,7 @@ const VALID_MUSIC_KEYS = ['upbeat-1', 'warm-1', 'modern-1', 'cinematic-1', 'acou
 type MusicKey = typeof VALID_MUSIC_KEYS[number];
 
 function getUserId(req: NextRequest): string | null {
-  const token = req.cookies.get('auth-token')?.value || req.cookies.get('dev_token')?.value;
+  const token = getSessionToken(req);
   if (!token) return null;
   const payload = verifyToken(token);
   return payload?.userId ?? null;

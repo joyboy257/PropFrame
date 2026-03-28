@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { creditTransactions, users } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/db/auth';
+import { getSessionToken } from '@/lib/auth/cookies';
 import { eq, sql, and, gte } from 'drizzle-orm';
 
 export const runtime = 'nodejs';
@@ -13,7 +14,7 @@ const PLAN_LIMITS: Record<string, number> = {
 };
 
 function getUserId(req: NextRequest): string | null {
-  const token = req.cookies.get('session_token')?.value || req.cookies.get('dev_token')?.value;
+  const token = getSessionToken(req);
   if (!token) return null;
   const payload = verifyToken(token);
   return payload?.userId ?? null;

@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { autoEdits, projects, creditTransactions } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/db/auth';
+import { getSessionToken } from '@/lib/auth/cookies';
 import { eq, and } from 'drizzle-orm';
+import { deleteObject } from '@/lib/storage/r2';
 
 export const runtime = 'nodejs';
 
 function getUserId(req: NextRequest): string | null {
-  const token = req.cookies.get('session_token')?.value || req.cookies.get('dev_token')?.value;
+  const token = getSessionToken(req);
   if (!token) return null;
   const payload = verifyToken(token);
   return payload?.userId ?? null;
@@ -95,6 +97,17 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const result = await getAutoEditWithAuth(req, params.id);
   if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status });
+
+  const { autoEdit } = result;
+
+  // Delete R2 object without blocking DB deletion
+  if (autoEdit.storageKey) {
+    await Promise.allSettled([
+      deleteObject(autoEdit.storageKey).catch((err) => {
+        console.error(`[R2 cleanup] Failed to delete object: ${autoEdit.storageKey}`, err);
+      }),
+    ]);
+  }
 
   await db.delete(autoEdits).where(eq(autoEdits.id, params.id));
 

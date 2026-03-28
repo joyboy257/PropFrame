@@ -29,7 +29,8 @@ interface BillingClientProps {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString('en-US', {
+  return new Date(dateStr).toLocaleDateString('en-SG', {
+    timeZone: 'Asia/Singapore',
     month: 'short',
     day: 'numeric',
     year: 'numeric',

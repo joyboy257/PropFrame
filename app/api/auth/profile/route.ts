@@ -1,15 +1,13 @@
-import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, getUserById } from '@/lib/db/auth';
+import { getSessionToken } from '@/lib/auth/cookies';
 import { db } from '@/lib/db';
 import { users } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
-export async function PATCH(request: Request) {
+export async function PATCH(req: NextRequest) {
   try {
-    const cookieStore = cookies();
-    const token = cookieStore.get('session_token')?.value || cookieStore.get('dev_token')?.value;
-
+    const token = getSessionToken(req);
     if (!token) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -24,7 +22,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 401 });
     }
 
-    const body = await request.json();
+    const body = await req.json();
     const { name } = body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {

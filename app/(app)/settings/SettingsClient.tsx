@@ -53,7 +53,8 @@ export function SettingsClient({ user }: SettingsClientProps) {
     }
   };
 
-  const memberSince = new Date(user.createdAt).toLocaleDateString('en-US', {
+  const memberSince = new Date(user.createdAt).toLocaleDateString('en-SG', {
+    timeZone: 'Asia/Singapore',
     year: 'numeric',
     month: 'long',
     day: 'numeric',

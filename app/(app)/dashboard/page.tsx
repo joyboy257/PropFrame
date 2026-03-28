@@ -3,12 +3,12 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { verifyToken, getUserById } from '@/lib/db/auth';
 import { db } from '@/lib/db';
-import { projects, clips, photos, creditTransactions, users } from '@/lib/db/schema';
-import { eq, desc, sql, and, gte } from 'drizzle-orm';
+import { projects, clips, photos, creditTransactions, users, organizationMembers, organizations, organizationCredits } from '@/lib/db/schema';
+import { eq, desc, sql, and, gte, inArray } from 'drizzle-orm';
 import { Button } from '@/components/ui/Button';
 import { UsageBadge } from '@/components/UsageBadge';
 import { ProjectCard } from '@/components/ProjectCard';
-import { Plus, Film } from 'lucide-react';
+import { Plus, Film, Crown, Coins } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +51,41 @@ export default async function DashboardPage() {
     );
   const usageThisMonth = Number(usageResult[0]?.total ?? 0);
 
+  // Check if user is a director of any org
+  const directorMemberships = await db
+    .select({
+      orgId: organizationMembers.orgId,
+      role: organizationMembers.role,
+      orgName: organizations.name,
+    })
+    .from(organizationMembers)
+    .innerJoin(organizations, eq(organizations.id, organizationMembers.orgId))
+    .where(
+      and(
+        eq(organizationMembers.userId, payload.userId),
+        eq(organizationMembers.role, 'director')
+      )
+    );
+
+  // Fetch pool credits for each org the user directs
+  const orgIds = directorMemberships.map(m => m.orgId);
+  const orgCredits = orgIds.length > 0
+    ? await db
+        .select({
+          orgId: organizationCredits.orgId,
+          amount: sql<number>`COALESCE(SUM(${organizationCredits.amount}), 0)`,
+        })
+        .from(organizationCredits)
+        .where(inArray(organizationCredits.orgId, orgIds))
+        .groupBy(organizationCredits.orgId)
+    : [];
+
+  const orgCreditsMap = Object.fromEntries(orgCredits.map(r => [r.orgId, r.amount]));
+  const directorOrgs = directorMemberships.map(m => ({
+    ...m,
+    poolCredits: orgCreditsMap[m.orgId] ?? 0,
+  }));
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       {/* Header */}
@@ -68,6 +103,42 @@ export default async function DashboardPage() {
           </Button>
         </Link>
       </div>
+
+      {/* Organization cards (for directors) */}
+      {directorOrgs.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-medium text-slate-400 flex items-center gap-2">
+              <Crown className="w-4 h-4 text-amber-400" />
+              Your Organizations
+            </h2>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {directorOrgs.map(org => (
+              <Link key={org.orgId} href={`/dashboard/org/${org.orgId}`}>
+                <div className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-lg p-4 flex items-center justify-between transition-colors">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Crown className="w-4 h-4 text-amber-400" />
+                      <span className="font-medium text-white">{org.orgName}</span>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1 capitalize">{org.role} plan</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="flex items-center gap-1.5">
+                      <Coins className="w-4 h-4 text-emerald-400" />
+                      <span className="text-lg font-bold text-white font-mono">
+                        {org.poolCredits.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="text-xs text-slate-500">pool credits</div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Stats bar */}
       <div className="grid grid-cols-3 gap-4 mb-8">

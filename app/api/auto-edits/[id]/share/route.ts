@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { autoEdits, projects } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/db/auth';
+import { getSessionToken } from '@/lib/auth/cookies';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
 export const runtime = 'nodejs';
 
 function getUserId(req: NextRequest): string | null {
-  const token = req.cookies.get('auth_token')?.value || req.cookies.get('dev_token')?.value;
+  const token = getSessionToken(req);
   if (!token) return null;
   const payload = verifyToken(token);
   return payload?.userId ?? null;

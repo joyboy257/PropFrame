@@ -8,7 +8,7 @@ function createRedisInstance(): Redis {
   const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
   return new Redis(redisUrl, {
     maxRetriesPerRequest: null,
-    enableReadyCheck: false,
+    enableReadyCheck: true,
   });
 }
 
@@ -27,7 +27,9 @@ let _queue: Queue<ClipJob> | null = null;
 
 export function getClipQueue(): Queue<ClipJob> {
   if (!_queue) {
-    _connection = createRedisInstance();
+    if (!_connection) {
+      _connection = createRedisInstance();
+    }
     _queue = new Queue<ClipJob>(CLIP_QUEUE_NAME, {
       connection: _connection,
       defaultJobOptions: {

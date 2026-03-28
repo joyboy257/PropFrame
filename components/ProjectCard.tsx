@@ -72,7 +72,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
               </span>
               <span className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {new Date(project.updatedAt).toLocaleDateString()}
+                {new Date(project.updatedAt).toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore', month: 'short', day: 'numeric', year: 'numeric' })}
               </span>
             </div>
           </div>
