@@ -2,8 +2,6 @@ import { ClipJob, ClipJobResult } from './types.js';
 import { generateClipVideo } from './replicate.js';
 import { uploadToR2 } from './r2.js';
 import { updateClipStatus } from './clips.js';
-import { nanoid } from 'nanoid';
-
 export async function processClipJob(job: ClipJob): Promise<ClipJobResult> {
   const { clipId, photoStorageKey, resolution, userId } = job;
 
@@ -33,7 +31,7 @@ export async function processClipJob(job: ClipJob): Promise<ClipJobResult> {
     const videoBuffer = Buffer.from(await videoResponse.arrayBuffer());
 
     // 5. Upload to R2
-    const clipStorageKey = `clip/${userId}/${nanoid()}.mp4`;
+    const clipStorageKey = `clips/${job.clipId}/rendered.mp4`;
     const publicUrl = await uploadToR2(clipStorageKey, videoBuffer, 'video/mp4');
 
     // 6. Mark clip as done

@@ -10,7 +10,7 @@ import { Modal } from '@/components/ui/Modal';
 import { InlineEdit } from '@/components/InlineEdit';
 import { SortablePhotoGrid } from '@/components/editor/SortablePhotoGrid';
 import { VirtualStageModal } from '@/components/editor/VirtualStageModal';
-import { ArrowLeft, Wand2, Sparkles, Film, Trash2, Loader2, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Wand2, Sparkles, Film, Trash2, Loader2, CheckCircle, Settings2 } from 'lucide-react';
 import { MUSIC_TRACKS } from '@/lib/music';
 import { toast } from 'sonner';
 
@@ -30,6 +30,7 @@ interface Project {
   status: string;
   clipCount: number;
   thumbnailUrl?: string | null;
+  cdcNumber?: string | null;
 }
 
 export interface AutoEdit {
@@ -65,6 +66,13 @@ export default function ProjectEditorClient({
   const [clips, setClips] = useState<Clip[]>(initialClips);
   const [autoEdits, setAutoEdits] = useState<AutoEdit[]>(initialAutoEdits);
   const [generatingCount, setGeneratingCount] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+  const [cdcNumber, setCdcNumber] = useState(project.cdcNumber ?? '');
+
+  // Sync cdcNumber when project changes (e.g., after save)
+  useEffect(() => {
+    setCdcNumber(project.cdcNumber ?? '');
+  }, [project.cdcNumber]);
   const [activeTab, setActiveTab] = useState<'photos' | 'clips' | 'edit'>('photos');
   const [stagingPhoto, setStagingPhoto] = useState<Photo | null>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
@@ -76,83 +84,7 @@ export default function ProjectEditorClient({
   const [renderedAutoEditId, setRenderedAutoEditId] = useState<string | null>(null);
   const [renderModalTitle, setRenderModalTitle] = useState('');
   const [renderModalMusic, setRenderModalMusic] = useState<string>('upbeat-1');
-  const [titleAIGenerated, setTitleAIGenerated] = useState(false);
-  const [titleAILoading, setTitleAILoading] = useState(false);
-  const [musicRecommendation, setMusicRecommendation] = useState<{ musicKey: string; reason: string } | null>(null);
   const renderPollingRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Batch generation state
-  const [showBatchModal, setShowBatchModal] = useState(false);
-  const [batchResolution, setBatchResolution] = useState<'720p' | '1080p' | '4k'>('720p');
-  const [batchMotionStyle, setBatchMotionStyle] = useState('push-in');
-  const [batchEstimate, setBatchEstimate] = useState<{ photoCount: number; costPerClip: number; estimatedCredits: number } | null>(null);
-  const [batchGenerating, setBatchGenerating] = useState(false);
-
-  // Fetch batch estimate
-  const fetchBatchEstimate = useCallback(async () => {
-    try {
-      const res = await fetch(
-        `/api/projects/${project.id}/clips/batch-generate?resolution=${batchResolution}`,
-        { credentials: 'include' }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setBatchEstimate(data);
-      }
-    } catch {
-      // silent
-    }
-  }, [project.id, batchResolution]);
-
-  // Open batch modal and fetch estimate
-  const handleOpenBatchModal = useCallback(() => {
-    setShowBatchModal(true);
-    setBatchResolution('720p');
-    setBatchMotionStyle('push-in');
-  }, []);
-
-  // Handle batch generation
-  const handleBatchGenerate = useCallback(async () => {
-    if (!batchEstimate || batchEstimate.photoCount === 0) return;
-
-    setBatchGenerating(true);
-    try {
-      const res = await fetch(`/api/projects/${project.id}/clips/batch-generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          resolution: batchResolution,
-          motionStyle: batchMotionStyle,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.error || 'Failed to start batch generation');
-        setBatchGenerating(false);
-        return;
-      }
-
-      const data = await res.json();
-      toast.success(`Queued ${data.count} clips for generation!`);
-      setShowBatchModal(false);
-      setBatchGenerating(false);
-
-      // Refresh project data to show new clips
-      fetchProject();
-    } catch {
-      toast.error('Network error. Please try again.');
-      setBatchGenerating(false);
-    }
-  }, [batchEstimate, batchResolution, batchMotionStyle, project.id, fetchProject]);
-
-  // Update estimate when resolution changes
-  useEffect(() => {
-    if (showBatchModal) {
-      fetchBatchEstimate();
-    }
-  }, [showBatchModal, batchResolution, fetchBatchEstimate]);
 
   const fetchProject = useCallback(async () => {
     try {
@@ -315,38 +247,25 @@ export default function ProjectEditorClient({
     toast.success('Project renamed');
   }, [project.id, onProjectUpdated]);
 
-  // Handle AI title generation
-  const handleGenerateTitleAI = useCallback(async () => {
-    if (photos.length === 0) {
-      toast.error('No photos available to generate title');
+  const handleSaveCdcNumber = useCallback(async () => {
+    const res = await fetch(`/api/projects/${project.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ cdcNumber: cdcNumber.trim() || null }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      toast.error(err.error || 'Failed to save CEA number');
       return;
     }
-    setTitleAILoading(true);
-    try {
-      const firstPhoto = photos[0];
-      const res = await fetch(`/api/auto-edits/${renderedAutoEditId || 'new'}/generate-title`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          projectName: project.name,
-          photoUrl: firstPhoto.publicUrl || `https://r2.example.com/${firstPhoto.storageKey}`,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        toast.error(err.error || 'Failed to generate title');
-        return;
-      }
-      const { title } = await res.json();
-      setRenderModalTitle(title);
-      setTitleAIGenerated(true);
-    } catch {
-      toast.error('Network error');
-    } finally {
-      setTitleAILoading(false);
-    }
-  }, [photos, project.name, renderedAutoEditId]);
+
+    const { project: updated } = await res.json();
+    setProject(updated);
+    setShowSettings(false);
+    toast.success('CEA number saved');
+  }, [project.id, cdcNumber]);
 
   // Generate Video handlers
   const doneClips = clips.filter(c => c.status === 'done');
@@ -354,8 +273,6 @@ export default function ProjectEditorClient({
   const handleOpenRenderModal = useCallback(() => {
     setRenderModalTitle(project.name);
     setRenderModalMusic('upbeat-1');
-    setTitleAIGenerated(false);
-    setMusicRecommendation(null);
     setShowRenderModal(true);
   }, [project.name]);
 
@@ -423,26 +340,6 @@ export default function ProjectEditorClient({
       const { autoEdit } = await createRes.json();
       setRenderedAutoEditId(autoEdit.id);
 
-      // Fetch AI music recommendation after auto-edit is created
-      try {
-        const musicRes = await fetch(`/api/auto-edits/${autoEdit.id}/recommend-music`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ projectName: project.name }),
-        });
-        if (musicRes.ok) {
-          const musicData = await musicRes.json();
-          setMusicRecommendation(musicData);
-          // Auto-select recommended track if user hasn't manually changed it
-          if (musicData.musicKey) {
-            setRenderModalMusic(musicData.musicKey);
-          }
-        }
-      } catch {
-        // silent - music recommendation is optional
-      }
-
       // Then trigger render
       const renderRes = await fetch(`/api/auto-edits/${autoEdit.id}/render`, {
         method: 'POST',
@@ -497,6 +394,15 @@ export default function ProjectEditorClient({
             iconSize={16}
           />
         </div>
+
+        {/* CEA settings */}
+        <button
+          onClick={() => setShowSettings(true)}
+          className="p-2 text-slate-500 hover:text-slate-300 transition-colors rounded-md hover:bg-slate-800"
+          title="Project settings"
+        >
+          <Settings2 className="w-4 h-4" />
+        </button>
 
         {/* Tab nav */}
         <div className="flex items-center gap-1 bg-slate-900 rounded-lg p-1">
@@ -575,32 +481,10 @@ export default function ProjectEditorClient({
 
         {activeTab === 'clips' && (
           <div className="max-w-4xl">
-            {/* Batch generate header */}
-            {photos.length > 0 && (
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h2 className="text-sm font-medium text-slate-300">
-                    {clips.filter(c => c.status === 'done').length} of {photos.length} clips generated
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {photos.length - clips.filter(c => c.status === 'done').length} photos need clips
-                  </p>
-                </div>
-                <Button
-                  onClick={handleOpenBatchModal}
-                  disabled={photos.length === 0 || generatingCount >= 5}
-                  className="gap-2"
-                  size="sm"
-                >
-                  <Wand2 className="w-4 h-4" />
-                  Generate All Clips
-                </Button>
-              </div>
-            )}
-
             <ClipGrid
               clips={clips}
               projectId={project.id}
+              cdcNumber={cdcNumber}
               onGenerateClip={handleGenerateClip}
               onRetryClip={handleRetryClip}
               generatingCount={generatingCount}
@@ -709,44 +593,16 @@ export default function ProjectEditorClient({
 
             {/* Title input */}
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-slate-300">
-                  Title Screen Text
-                </label>
-                <button
-                  onClick={handleGenerateTitleAI}
-                  disabled={titleAILoading || photos.length === 0}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/40 rounded-md text-xs text-blue-300 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {titleAILoading ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Sparkles className="w-3.5 h-3.5" />
-                  )}
-                  Generate with AI
-                </button>
-              </div>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={renderModalTitle}
-                  onChange={e => {
-                    setRenderModalTitle(e.target.value);
-                    // Clear AI badge if user manually edits
-                    if (titleAIGenerated) {
-                      // Only clear if the change is significant (not just spacing)
-                    }
-                  }}
-                  placeholder="123 Main Street, Los Angeles CA"
-                  className="w-full h-10 px-3 pr-16 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {titleAIGenerated && (
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-900/50 border border-blue-500/40 rounded text-xs text-blue-300">
-                    <Sparkles className="w-3 h-3" />
-                    AI Generated
-                  </span>
-                )}
-              </div>
+              <label className="text-sm font-medium text-slate-300 mb-2 block">
+                Title Screen Text
+              </label>
+              <input
+                type="text"
+                value={renderModalTitle}
+                onChange={e => setRenderModalTitle(e.target.value)}
+                placeholder="123 Main Street, Los Angeles CA"
+                className="w-full h-10 px-3 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
             </div>
 
             {/* Music selector */}
@@ -754,28 +610,17 @@ export default function ProjectEditorClient({
               <label className="text-sm font-medium text-slate-300 mb-2 block">
                 Background Music
               </label>
-              <div className="relative">
-                <select
-                  value={renderModalMusic}
-                  onChange={e => setRenderModalMusic(e.target.value)}
-                  className="w-full h-10 px-3 pr-16 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {(Object.keys(MUSIC_TRACKS) as Array<keyof typeof MUSIC_TRACKS>).map(key => (
-                    <option key={key} value={key}>
-                      {MUSIC_TRACKS[key].name} — {MUSIC_TRACKS[key].mood}
-                    </option>
-                  ))}
-                </select>
-                {musicRecommendation && musicRecommendation.musicKey === renderModalMusic && (
-                  <span className="absolute right-10 top-1/2 -translate-y-1/2 inline-flex items-center gap-1 px-1.5 py-0.5 bg-purple-900/50 border border-purple-500/40 rounded text-xs text-purple-300">
-                    <Sparkles className="w-3 h-3" />
-                    AI Recommended
-                  </span>
-                )}
-              </div>
-              {musicRecommendation && (
-                <p className="text-xs text-slate-500 mt-1.5">{musicRecommendation.reason}</p>
-              )}
+              <select
+                value={renderModalMusic}
+                onChange={e => setRenderModalMusic(e.target.value)}
+                className="w-full h-10 px-3 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {(Object.keys(MUSIC_TRACKS) as Array<keyof typeof MUSIC_TRACKS>).map(key => (
+                  <option key={key} value={key}>
+                    {MUSIC_TRACKS[key].name} — {MUSIC_TRACKS[key].mood}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
         )}
@@ -798,108 +643,40 @@ export default function ProjectEditorClient({
         )}
       </Modal>
 
-      {/* Batch Generate All Modal */}
+      {/* CEA Settings Modal */}
       <Modal
-        open={showBatchModal}
-        onClose={() => !batchGenerating && setShowBatchModal(false)}
-        title="Generate All Clips"
-        size="md"
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        title="Project Settings"
+        size="sm"
         footer={
-          !batchGenerating ? (
-            <>
-              <Button variant="secondary" onClick={() => setShowBatchModal(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleBatchGenerate}
-                disabled={!batchEstimate || batchEstimate.photoCount === 0}
-                className="gap-2"
-              >
-                <Wand2 className="w-4 h-4" />
-                Generate {batchEstimate?.photoCount ?? 0} Clips
-              </Button>
-            </>
-          ) : (
-            <Button disabled className="gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Queuing clips...
+          <>
+            <Button variant="secondary" onClick={() => setShowSettings(false)}>
+              Cancel
             </Button>
-          )
+            <Button onClick={handleSaveCdcNumber} className="gap-2">
+              Save
+            </Button>
+          </>
         }
       >
         <div className="space-y-4">
-          {/* Summary */}
-          <div className="bg-slate-800/50 rounded-lg px-4 py-3 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-300 font-medium">Photos to process</p>
-              <p className="text-xs text-slate-500">
-                {batchEstimate?.photoCount ?? 0} clips will be generated
-              </p>
-            </div>
-            <Film className="w-5 h-5 text-blue-400" />
-          </div>
-
-          {/* Resolution selector */}
           <div>
             <label className="text-sm font-medium text-slate-300 mb-2 block">
-              Resolution
+              CEA Registration Number
             </label>
-            <div className="flex gap-2">
-              {(['720p', '1080p', '4k'] as const).map(res => (
-                <button
-                  key={res}
-                  onClick={() => setBatchResolution(res)}
-                  className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
-                    batchResolution === res
-                      ? 'bg-blue-500/20 border-blue-500 text-blue-300'
-                      : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'
-                  }`}
-                >
-                  <div>{res}</div>
-                  <div className="text-xs mt-0.5 opacity-70">
-                    {res === '720p' ? '1 credit' : res === '1080p' ? '2 credits' : '4 credits'}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Motion style selector */}
-          <div>
-            <label className="text-sm font-medium text-slate-300 mb-2 block">
-              Motion Style
-            </label>
-            <select
-              value={batchMotionStyle}
-              onChange={e => setBatchMotionStyle(e.target.value)}
-              className="w-full h-10 px-3 bg-slate-800 border border-slate-700 rounded-lg text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="push-in">Push In</option>
-              <option value="zoom-out">Zoom Out</option>
-              <option value="pan-left">Pan Left</option>
-              <option value="pan-right">Pan Right</option>
-            </select>
-          </div>
-
-          {/* Credit cost */}
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-4 py-3 flex items-center justify-between">
-            <div>
-              <p className="text-sm text-slate-300 font-medium">Total credit cost</p>
-              <p className="text-xs text-slate-500">
-                {batchEstimate?.costPerClip ?? 0} credits × {batchEstimate?.photoCount ?? 0} photos
-              </p>
-            </div>
-            <span className="text-lg font-bold text-amber-400">
-              {batchEstimate?.estimatedCredits ?? 0}
-            </span>
-          </div>
-
-          {/* Warning */}
-          {batchEstimate && batchEstimate.photoCount > 0 && (
-            <p className="text-xs text-slate-500">
-              Clips will be queued for generation. You can continue working while they process.
+            <input
+              type="text"
+              value={cdcNumber}
+              onChange={e => setCdcNumber(e.target.value)}
+              placeholder="e.g., R012345B"
+              maxLength={50}
+              className="w-full h-10 px-3 bg-slate-800 border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-slate-500 mt-2">
+              Singapore estate agents: enter your CEA registration number. It will appear on exported videos.
             </p>
-          )}
+          </div>
         </div>
       </Modal>
     </div>

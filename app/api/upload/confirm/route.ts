@@ -2,21 +2,46 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { photos, projects } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/db/auth';
+import { getSessionToken } from '@/lib/auth/cookies';
 import { eq } from 'drizzle-orm';
 
 export const runtime = 'nodejs';
 
 export async function POST(req: NextRequest) {
-  const token = req.cookies.get('session_token')?.value || req.cookies.get('dev_token')?.value;
+  const token = getSessionToken(req);
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const payload = verifyToken(token);
   if (!payload) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { projectId, storageKey, filename, width, height, order = 0 } = await req.json();
+  const { projectId, storageKey, filename, contentType, width, height, order = 0 } = await req.json();
 
   if (!projectId || !storageKey || !filename) {
     return NextResponse.json({ error: 'projectId, storageKey, filename required' }, { status: 400 });
+  }
+
+  // Validate file type: extension check (primary) + contentType check (secondary for extensionless keys)
+  const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.heic', '.webp']);
+  const ALLOWED_CONTENT_TYPES = new Set(['image/jpeg', 'image/png', 'image/heic', 'image/webp']);
+
+  const rawExt = storageKey.split('/').pop()?.split('?')[0] ?? '';
+  const ext = rawExt.startsWith('.') ? rawExt.toLowerCase() : `.${rawExt.toLowerCase()}`;
+  const extValid = ALLOWED_EXTENSIONS.has(ext);
+
+  let contentTypeValid = false;
+  if (contentType) {
+    const normalizedCt = contentType.split(';')[0].trim().toLowerCase();
+    contentTypeValid = ALLOWED_CONTENT_TYPES.has(normalizedCt);
+  }
+
+  // Reject if contentType is present but invalid (must be a valid image MIME type)
+  if (contentType && !contentTypeValid) {
+    return NextResponse.json({ error: 'Invalid file type. Only image files (jpg, png, heic, webp) are allowed.' }, { status: 400 });
+  }
+
+  // Reject if extension is invalid AND there is no valid contentType to fall back on
+  if (!extValid && !contentTypeValid) {
+    return NextResponse.json({ error: 'Invalid file type. Only image files (jpg, png, heic, webp) are allowed.' }, { status: 400 });
   }
 
   // Verify project ownership

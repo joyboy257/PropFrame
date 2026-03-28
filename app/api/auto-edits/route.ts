@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { autoEdits, clips, projects, creditTransactions, users } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/db/auth';
+import { getSessionToken } from '@/lib/auth/cookies';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 
 export const runtime = 'nodejs';
 
 function getUserId(req: NextRequest): string | null {
-  const token = req.cookies.get('session_token')?.value || req.cookies.get('dev_token')?.value;
+  const token = getSessionToken(req);
   if (!token) return null;
   const payload = verifyToken(token);
   return payload?.userId ?? null;
@@ -52,8 +53,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'One or more clipIds are invalid or do not belong to this project' }, { status: 400 });
   }
 
+  // Idempotency: check for existing pending auto-edit for this project
+  const [existing] = await db
+    .select()
+    .from(autoEdits)
+    .where(
+      and(
+        eq(autoEdits.projectId, projectId),
+        eq(autoEdits.status, 'queued')
+      )
+    )
+    .limit(1);
+
+  if (existing) {
+    return NextResponse.json({ autoEdit: existing }, { status: 200 });
+  }
+
   // Deduct 1 credit for auto_edit
-  await db.execute(sql`UPDATE users SET credits = credits - 1 WHERE id = ${userId} AND credits >= 1`);
+  const result = await db.execute(sql`UPDATE users SET credits = credits - 1 WHERE id = ${userId} AND credits >= 1`);
+  if (result.rowCount === 0) {
+    return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
+  }
 
   // Record the transaction
   await db.insert(creditTransactions).values({

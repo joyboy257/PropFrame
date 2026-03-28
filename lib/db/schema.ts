@@ -136,6 +136,8 @@ export const creditTransactions = pgTable('credit_transactions', {
   type: varchar('type', { length: 50 }).notNull(), // signup | purchase | clip_generation | auto_edit | virtual_staging | sky_replacement | music_generation | org_topup
   referenceId: uuid('reference_id'), // clip_id, photo_id, auto_edit_id, etc.
   description: varchar('description', { length: 255 }),
+  stripeEventId: varchar('stripe_event_id', { length: 255 }).unique(), // Stripe event ID for webhook idempotency
+  expiresAt: timestamp('expires_at'), // null = never expires (personal credits)
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

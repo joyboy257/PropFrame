@@ -5,6 +5,19 @@ import Redis from 'ioredis';
 
 export const runtime = 'nodejs';
 
+// Module-level singleton — persists across requests
+let redisInstance: Redis | null = null;
+
+function getRedis(): Redis {
+  if (!redisInstance) {
+    redisInstance = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+    });
+  }
+  return redisInstance;
+}
+
 // GET /api/health — health check for Singapore launch readiness
 export async function GET(req: NextRequest) {
   const checks: Record<string, { status: 'ok' | 'error'; error?: string }> = {};
@@ -19,10 +32,8 @@ export async function GET(req: NextRequest) {
 
   // Check Redis/worker connectivity
   try {
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-    const redis = new Redis(redisUrl, { maxRetriesPerRequest: null, enableReadyCheck: false });
+    const redis = getRedis();
     await redis.ping();
-    await redis.quit();
     checks.redis = { status: 'ok' };
   } catch (err) {
     checks.redis = { status: 'error', error: err instanceof Error ? err.message : 'Redis connection failed' };

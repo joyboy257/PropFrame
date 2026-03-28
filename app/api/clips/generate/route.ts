@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { clips, photos, projects, users } from '@/lib/db/schema';
-import { verifyToken, deductCredits, addCredits } from '@/lib/db/auth';
+import { verifyToken, deductCreditsWithOrgPool, addOrgCredits, addCredits } from '@/lib/db/auth';
+import { getSessionToken } from '@/lib/auth/cookies';
 import { eq, and, inArray } from 'drizzle-orm';
 import { getClipCost } from '@/lib/credits';
 import { enqueueClipJob } from '../../../../workers/video-render/src/queue';
@@ -9,7 +10,7 @@ import { enqueueClipJob } from '../../../../workers/video-render/src/queue';
 export const runtime = 'nodejs';
 
 function getUserId(req: NextRequest): string | null {
-  const token=req.cookies.get('session_token')?.value || req.cookies.get('dev_token')?.value;
+  const token = getSessionToken(req);
   if (!token) return null;
   const payload = verifyToken(token);
   return payload?.userId ?? null;
@@ -35,11 +36,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const cost = getClipCost(resolution as '720p' | '1080p' | '4k');
+  const VALID_RESOLUTIONS = ['720p', '1080p', '4k'] as const;
+  if (!VALID_RESOLUTIONS.includes(resolution)) {
+    return NextResponse.json({ error: 'Invalid resolution. Must be 720p, 1080p, or 4k' }, { status: 400 });
+  }
 
-  // Check user credits
-  const [user] = await db.select({ credits: users.credits }).from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || user.credits < cost) {
+  const cost = getClipCost(resolution);
+
+  // Get user with org context for credit pool priority
+  const [user] = await db
+    .select({ id: users.id, credits: users.credits, organizationId: users.organizationId })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+  // Check combined credits (org pool + personal)
+  const { getOrgPoolCredits } = await import('@/lib/db/auth');
+  const orgPool = user.organizationId ? await getOrgPoolCredits(user.organizationId) : 0;
+  const totalCredits = orgPool + (user.credits ?? 0);
+  if (totalCredits < cost) {
     return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 });
   }
 
@@ -71,7 +87,7 @@ export async function POST(req: NextRequest) {
     cost,
   }).returning();
 
-  // ─── Enqueue to GPU worker (with credit refund on failure) ────────────────
+  // ─── Enqueue to GPU worker ───────────────────────────────────────────────
   try {
     await enqueueClipJob({
       clipId: clip.id,
@@ -84,9 +100,7 @@ export async function POST(req: NextRequest) {
       userId,
     });
   } catch (enqueueError) {
-    // Refund credits on enqueue failure
-    await addCredits(userId, cost, 'clip_generation', clip.id);
-    // Mark clip as failed
+    // Enqueue failed — mark clip errored, no credits charged
     await db
       .update(clips)
       .set({ status: 'error', errorMessage: 'Failed to enqueue job', updatedAt: new Date() })
@@ -95,7 +109,26 @@ export async function POST(req: NextRequest) {
   }
 
   // ─── Deduct credits only after successful enqueue ────────────────────────
-  await deductCredits(userId, cost, 'clip_generation', clip.id);
+  let creditSource: 'org' | 'personal' = 'personal';
+  try {
+    creditSource = (await deductCreditsWithOrgPool(
+      userId,
+      user.organizationId,
+      cost,
+      'clip_generation',
+      clip.id
+    )).source;
+  } catch (deductError) {
+    // Enqueue succeeded but credit deduction failed — the clip is marked errored
+    // but the BullMQ job remains in the queue as an orphaned worker.
+    // Acceptable limitation: the job will sit in the queue until it times out
+    // (worker maxRetries/removeOnFail policies apply). No credits were charged.
+    await db
+      .update(clips)
+      .set({ status: 'error', errorMessage: 'Credit deduction failed after enqueue', updatedAt: new Date() })
+      .where(eq(clips.id, clip.id));
+    throw deductError;
+  }
 
   // Update project clip count
   await db

@@ -54,18 +54,6 @@ export async function POST(req: NextRequest) {
       path: '/',
     });
 
-    // In production, send the magic link via email
-    // For now, return the token directly (dev mode)
-    if (process.env.NODE_ENV !== 'production') {
-      response.cookies.set('dev_token', token, {
-        httpOnly: true,
-        secure: false,
-        sameSite: 'lax',
-        expires: expiresAt,
-        path: '/',
-      });
-    }
-
     return response;
   } catch (error) {
     console.error('Login error:', error);

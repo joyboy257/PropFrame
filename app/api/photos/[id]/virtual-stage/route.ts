@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { photos, projects, users, creditTransactions } from '@/lib/db/schema';
 import { verifyToken } from '@/lib/db/auth';
+import { getSessionToken } from '@/lib/auth/cookies';
 import { eq, and } from 'drizzle-orm';
 import { CREDIT_COSTS } from '@/lib/credits';
 
@@ -11,7 +12,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const token = req.cookies.get('auth_token')?.value || req.cookies.get('dev_token')?.value;
+  const token = getSessionToken(req);
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const payload = verifyToken(token);

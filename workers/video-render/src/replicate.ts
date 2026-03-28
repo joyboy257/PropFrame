@@ -1,6 +1,7 @@
 import type { MotionStyle, Resolution } from './types.js';
+import { createCircuitBreaker } from '../../../../lib/circuitBreaker';
 
-const BASE_URL = 'https://api.dev.runwayml.com/v1';
+const BASE_URL = 'https://api.runwayml.com/v1';
 
 function buildPrompt(motionStyle: MotionStyle, customPrompt: string | null): string {
   const stylePrompts: Record<MotionStyle, string> = {
@@ -30,7 +31,7 @@ export interface GenerateClipParams {
  * Generate a video clip from an image using Runway Gen-3.
  *
  * Runway Gen-3 outputs 1280×720 — significantly better than CogVideoX's 480p.
- * API: https://api.dev.runwayml.com/v1/image_to_video
+ * API: https://api.runwayml.com/v1/image_to_video
  */
 export async function generateClipVideo(params: GenerateClipParams): Promise<VideoGenResult> {
   const { imageUrl, motionStyle, customPrompt } = params;
@@ -118,3 +119,11 @@ async function pollRunwayJob(jobId: string, apiKey: string): Promise<string> {
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+// Circuit breaker wrapper — shadows original to provide graceful Runway API degradation
+export const generateClipVideo = createCircuitBreaker(generateClipVideo, {
+  failureThreshold: 5,
+  resetTimeout: 30_000,
+  volumeThreshold: 3,
+  timeout: 120_000,
+}) as typeof generateClipVideo;

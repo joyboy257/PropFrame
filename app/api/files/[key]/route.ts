@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken } from '@/lib/db/auth';
+import { getSessionToken } from '@/lib/auth/cookies';
 
 export const runtime = 'nodejs';
 
@@ -10,7 +11,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { key: string[] } }
 ) {
-  const token = req.cookies.get('session_token')?.value || req.cookies.get('dev_token')?.value;
+  const token = getSessionToken(req);
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const payload = verifyToken(token);

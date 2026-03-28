@@ -20,6 +20,7 @@ export interface Clip {
 interface ClipGridProps {
   clips: Clip[];
   projectId: string;
+  cdcNumber?: string | null;
   onGenerateClip: (photoId: string, motionStyle: string, resolution: string) => Promise<void>;
   onRetryClip?: (clipId: string) => void;
   generatingCount: number;
@@ -34,7 +35,7 @@ const MOTION_STYLES = [
   { value: 'custom', label: 'Custom' },
 ];
 
-export function ClipGrid({ clips, projectId, onGenerateClip, onRetryClip, generatingCount, isGeneratingLocked }: ClipGridProps) {
+export function ClipGrid({ clips, projectId, cdcNumber, onGenerateClip, onRetryClip, generatingCount, isGeneratingLocked }: ClipGridProps) {
   const [selectedMotion, setSelectedMotion] = useState('push-in');
   const [selectedResolution, setSelectedResolution] = useState('720p');
   const [playingClip, setPlayingClip] = useState<Clip | null>(null);
@@ -111,6 +112,7 @@ export function ClipGrid({ clips, projectId, onGenerateClip, onRetryClip, genera
       {playingClip && (
         <VideoModal
           clip={{ ...playingClip, publicUrl: playingClip.publicUrl ?? null }}
+          cdcNumber={cdcNumber}
           onClose={() => setPlayingClip(null)}
         />
       )}

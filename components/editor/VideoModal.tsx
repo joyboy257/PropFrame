@@ -10,10 +10,11 @@ interface VideoModalProps {
     motionStyle: string;
     resolution: string;
   };
+  cdcNumber?: string | null;
   onClose: () => void;
 }
 
-export function VideoModal({ clip, onClose }: VideoModalProps) {
+export function VideoModal({ clip, cdcNumber, onClose }: VideoModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -36,6 +37,12 @@ export function VideoModal({ clip, onClose }: VideoModalProps) {
             <span className="text-sm text-slate-300 font-medium capitalize">{clip.motionStyle}</span>
             <span className="text-xs text-slate-600">|</span>
             <span className="text-xs text-slate-500 font-mono">{clip.resolution}</span>
+            {cdcNumber && (
+              <>
+                <span className="text-xs text-slate-600">|</span>
+                <span className="text-xs text-slate-500 font-mono">CEA: {cdcNumber}</span>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {clip.publicUrl && (

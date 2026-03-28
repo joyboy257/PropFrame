@@ -511,7 +511,7 @@ export function AutoEditTab({ projectId, clips, autoEdits: initialAutoEdits, onA
                     <p className="text-sm text-slate-300 truncate">{ae.titleText}</p>
                   )}
                   <p className="text-xs text-slate-600">
-                    {new Date(ae.createdAt).toLocaleDateString()}
+                    {new Date(ae.createdAt).toLocaleDateString('en-SG', { timeZone: 'Asia/Singapore', month: 'short', day: 'numeric', year: 'numeric' })}
                   </p>
                 </div>
 
